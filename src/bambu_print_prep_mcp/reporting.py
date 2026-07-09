@@ -19,20 +19,54 @@ def _write_text_no_clobber(path: Path, body: str) -> Path:
     return resolved
 
 
+def _safe_path_string(value: str, output_dir: Path) -> str:
+    path = Path(value)
+    if not path.is_absolute():
+        return str(path)
+    try:
+        return str(path.resolve().relative_to(output_dir))
+    except ValueError:
+        return path.name
+
+
+def _safe_report_data(value: object, output_dir: Path, key: str | None = None) -> object:
+    path_keys = {
+        "file_path",
+        "final_model_path",
+        "input_path",
+        "json_report_path",
+        "markdown_report_path",
+        "output_path",
+    }
+    if isinstance(value, dict):
+        return {
+            item_key: _safe_report_data(item_value, output_dir, item_key)
+            for item_key, item_value in value.items()
+        }
+    if isinstance(value, list):
+        return [_safe_report_data(item, output_dir) for item in value]
+    if isinstance(value, str) and key in path_keys:
+        return _safe_path_string(value, output_dir)
+    return value
+
+
 def write_json_report(result: BaseModel, output_path: str | Path) -> Path:
     path = Path(output_path)
-    return _write_text_no_clobber(path, result.model_dump_json(indent=2))
+    output_dir = path.expanduser().resolve().parent
+    data = _safe_report_data(result.model_dump(mode="json"), output_dir)
+    return _write_text_no_clobber(path, json.dumps(data, indent=2))
 
 
 def write_markdown_report(result: PrepareResult, output_path: str | Path) -> Path:
     path = Path(output_path)
-    data = json.loads(result.model_dump_json())
+    output_dir = path.expanduser().resolve().parent
+    data = _safe_report_data(json.loads(result.model_dump_json()), output_dir)
     recommendation = data["recommendation"]
     steps = "\n".join(
         f"{index + 1}. {step}"
         for index, step in enumerate(recommendation["bambu_studio_steps"])
     )
-    warnings = result.warnings or result.final_inspection.warnings
+    warnings = data["warnings"] or data["final_inspection"]["warnings"]
     warning_text = (
         "\n".join(f"- {warning}" for warning in warnings)
         if warnings
@@ -42,7 +76,7 @@ def write_markdown_report(result: PrepareResult, output_path: str | Path) -> Pat
 
 ## Final Model
 
-`{result.final_model_path}`
+`{data["final_model_path"]}`
 
 ## Final Dimensions
 

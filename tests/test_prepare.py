@@ -38,6 +38,21 @@ def test_prepare_model_for_bambu_writes_outputs(cube_stl: Path, tmp_path: Path) 
     assert result.recommendation.support_type == "Tree"
 
 
+def test_prepare_reports_do_not_include_absolute_local_paths(
+    cube_stl: Path,
+    tmp_path: Path,
+) -> None:
+    result = prepare_model_for_bambu(cube_stl, output_dir=tmp_path / "prepared")
+    report_text = (
+        Path(result.markdown_report_path).read_text(encoding="utf-8")
+        + Path(result.json_report_path).read_text(encoding="utf-8")
+    )
+
+    assert str(tmp_path) not in report_text
+    assert str(cube_stl) not in report_text
+    assert "/Users/" not in report_text
+
+
 def test_prepare_without_target_keeps_model_size(cube_stl: Path, tmp_path: Path) -> None:
     result = prepare_model_for_bambu(cube_stl, output_dir=tmp_path / "prepared")
 
@@ -71,8 +86,12 @@ def test_prepare_invalid_target_height_leaves_output_dir_empty(
 def test_prepare_unscalable_model_cleans_up_intermediate_outputs(tmp_path: Path) -> None:
     flat_stl = _flat_stl(tmp_path / "flat.stl")
     output_dir = tmp_path / "prepared"
+    output_dir.mkdir()
+    unrelated = output_dir / "keep.txt"
+    unrelated.write_text("not created by prepare", encoding="utf-8")
 
     with pytest.raises(ValueError):
         prepare_model_for_bambu(flat_stl, output_dir=output_dir, target_height_mm=10.0)
 
-    assert list(output_dir.iterdir()) == []
+    assert list(output_dir.iterdir()) == [unrelated]
+    assert unrelated.read_text(encoding="utf-8") == "not created by prepare"
