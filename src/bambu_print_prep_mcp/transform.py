@@ -1,11 +1,25 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from bambu_print_prep_mcp.analysis import fits_build_volume, inspect_model, load_printer_profile
 from bambu_print_prep_mcp.mesh_io import load_mesh, write_mesh
 from bambu_print_prep_mcp.models import ScaleResult
 from bambu_print_prep_mcp.security import refuse_overwrite_input, safe_output_path
+
+_INVALID_SCALE_MESSAGE = "Scale factor must be a finite value greater than zero."
+
+
+def _refuse_existing_output(output_path: Path) -> None:
+    if output_path.exists():
+        raise ValueError(f"Refusing to overwrite existing output file: {output_path}")
+
+
+def _scale_to_target(source_dimension: float, target_dimension: float, axis_name: str) -> float:
+    if source_dimension <= 0:
+        raise ValueError(f"Source {axis_name} must be greater than zero to scale by target.")
+    return target_dimension / source_dimension
 
 
 def _chosen_scale_factor(
@@ -29,11 +43,11 @@ def _chosen_scale_factor(
             "target_height_mm, or scale_factor."
         )
     if target_width_mm is not None:
-        return target_width_mm / current_width
+        return _scale_to_target(current_width, target_width_mm, "width")
     if target_depth_mm is not None:
-        return target_depth_mm / current_depth
+        return _scale_to_target(current_depth, target_depth_mm, "depth")
     if target_height_mm is not None:
-        return target_height_mm / current_height
+        return _scale_to_target(current_height, target_height_mm, "height")
     assert scale_factor is not None
     return scale_factor
 
@@ -56,6 +70,7 @@ def normalize_scale(
         else safe_output_path(input_path, output_dir, "_scaled", ".stl")
     )
     refuse_overwrite_input(input_path, chosen_output)
+    _refuse_existing_output(chosen_output)
     factor = _chosen_scale_factor(
         before.dimensions.width_mm,
         before.dimensions.depth_mm,
@@ -65,8 +80,8 @@ def normalize_scale(
         target_height_mm,
         scale_factor,
     )
-    if factor <= 0:
-        raise ValueError("Scale factor must be greater than zero.")
+    if not math.isfinite(factor) or factor <= 0:
+        raise ValueError(_INVALID_SCALE_MESSAGE)
     mesh = load_mesh(input_path)
     mesh.apply_scale(factor)
     write_mesh(mesh, chosen_output)
