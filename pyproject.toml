@@ -12,6 +12,7 @@ license = { text = "MIT" }
 authors = [{ name = "Bambu Print Prep MCP Contributors" }]
 dependencies = [
   "mcp[cli]>=1.27,<2",
+  "networkx>=3.0",
   "numpy>=1.26",
   "pydantic>=2.7",
   "trimesh>=4.4",

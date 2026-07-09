@@ -17,6 +17,20 @@ def test_repair_model_writes_new_file(cube_stl: Path, tmp_path: Path) -> None:
     assert "fix_normals" in result.actions
 
 
+def test_repair_model_handles_open_mesh(cube_stl: Path, tmp_path: Path) -> None:
+    mesh = trimesh.load_mesh(cube_stl, force="mesh")
+    mesh.update_faces(range(len(mesh.faces) - 1))
+    open_mesh_path = tmp_path / "open_cube.stl"
+    output_path = tmp_path / "open_cube_repaired.stl"
+    mesh.export(open_mesh_path)
+
+    result = repair_model(open_mesh_path, output_path=output_path)
+
+    assert result.before.is_watertight is False
+    assert Path(result.output_path).exists()
+    assert "fill_holes" in result.actions
+
+
 def test_repair_model_refuses_overwrite(cube_stl: Path) -> None:
     try:
         repair_model(cube_stl, output_path=cube_stl)
