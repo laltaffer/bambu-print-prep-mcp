@@ -28,3 +28,13 @@ bambu-print-prep-mcp
 ## Privacy
 
 Do not commit personal STL files, screenshots, generated reports, printer serials, access codes, Bambu account data, or local absolute paths. Generated output belongs in `outputs/`, which is ignored by git.
+
+## Public Repository Safety Checklist
+
+Before pushing publicly:
+
+- Run `git status --short` and review every tracked file.
+- Search tracked source files for local machine paths, personal identifiers, credentials, and generated-file metadata.
+- Run `detect-secrets scan --baseline .secrets.baseline`.
+- Confirm no personal model files, screenshots, reports, printer identifiers, or local paths are staged.
+- Confirm generated outputs remain under ignored directories such as `outputs/`.
