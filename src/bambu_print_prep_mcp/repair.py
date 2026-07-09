@@ -2,12 +2,29 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import trimesh
 
 from bambu_print_prep_mcp.analysis import inspect_model
 from bambu_print_prep_mcp.mesh_io import load_mesh, write_mesh
 from bambu_print_prep_mcp.models import RepairResult
 from bambu_print_prep_mcp.security import refuse_overwrite_input, safe_output_path
+
+
+def _refuse_existing_output(output_path: Path) -> None:
+    if output_path.exists():
+        raise ValueError(f"Refusing to overwrite existing output file: {output_path}")
+
+
+def _validate_usable_geometry(mesh: trimesh.Trimesh) -> None:
+    bounds = mesh.bounds
+    if (
+        mesh.faces.size == 0
+        or bounds is None
+        or bounds.shape != (2, 3)
+        or not np.isfinite(bounds).all()
+    ):
+        raise ValueError("Repair removed all usable geometry; refusing to write output.")
 
 
 def repair_model(
@@ -25,6 +42,7 @@ def repair_model(
         else safe_output_path(input_path, output_dir, "_repaired", ".stl")
     )
     refuse_overwrite_input(input_path, chosen_output)
+    _refuse_existing_output(chosen_output)
 
     mesh = load_mesh(input_path)
     original_bounds = mesh.bounds.copy()
@@ -42,6 +60,7 @@ def repair_model(
     actions.append("remove_degenerate_faces")
     mesh.remove_unreferenced_vertices()
     actions.append("remove_unreferenced_vertices")
+    _validate_usable_geometry(mesh)
 
     if preserve_scale and mesh.bounds.shape == original_bounds.shape:
         repaired_size = mesh.bounds[1] - mesh.bounds[0]
