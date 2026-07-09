@@ -16,6 +16,11 @@ def _refuse_existing_output(output_path: Path) -> None:
         raise ValueError(f"Refusing to overwrite existing output file: {output_path}")
 
 
+def _ensure_stl_output_path(output_path: Path) -> None:
+    if output_path.suffix.lower() != ".stl":
+        raise ValueError("Repair output path must use a .stl extension.")
+
+
 def _validate_usable_geometry(mesh: trimesh.Trimesh) -> None:
     bounds = mesh.bounds
     if (
@@ -55,6 +60,7 @@ def repair_model(
         if output_path is not None
         else safe_output_path(input_path, output_dir, "_repaired", ".stl")
     )
+    _ensure_stl_output_path(chosen_output)
     refuse_overwrite_input(input_path, chosen_output)
     _refuse_existing_output(chosen_output)
 

@@ -39,6 +39,18 @@ def test_repair_model_refuses_existing_output_path_and_preserves_contents(
     assert output_path.read_text(encoding="utf-8") == original_contents
 
 
+@pytest.mark.parametrize("output_name", ["cube_repaired.obj", "cube_repaired"])
+def test_repair_model_refuses_non_stl_output_path_without_creating_file(
+    cube_stl: Path, tmp_path: Path, output_name: str
+) -> None:
+    output_path = tmp_path / output_name
+
+    with pytest.raises(ValueError, match="Repair output path must use a .stl extension"):
+        repair_model(cube_stl, output_path=output_path)
+
+    assert not output_path.exists()
+
+
 def test_repair_model_refuses_output_created_after_initial_check(
     cube_stl: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
