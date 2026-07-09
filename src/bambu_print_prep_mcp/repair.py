@@ -6,7 +6,7 @@ import numpy as np
 import trimesh
 
 from bambu_print_prep_mcp.analysis import inspect_model
-from bambu_print_prep_mcp.mesh_io import load_mesh, write_mesh
+from bambu_print_prep_mcp.mesh_io import load_mesh
 from bambu_print_prep_mcp.models import RepairResult
 from bambu_print_prep_mcp.security import refuse_overwrite_input, safe_output_path
 
@@ -25,6 +25,20 @@ def _validate_usable_geometry(mesh: trimesh.Trimesh) -> None:
         or not np.isfinite(bounds).all()
     ):
         raise ValueError("Repair removed all usable geometry; refusing to write output.")
+
+
+def _write_mesh_no_clobber(mesh: trimesh.Trimesh, output_path: Path) -> Path:
+    path = output_path.expanduser().resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    exported = mesh.export(file_type=path.suffix.lower().lstrip(".") or "stl")
+    data = exported.encode("utf-8") if isinstance(exported, str) else bytes(exported)
+
+    try:
+        with path.open("xb") as output_file:
+            output_file.write(data)
+    except FileExistsError as exc:
+        raise ValueError(f"Refusing to overwrite existing output file: {path}") from exc
+    return path
 
 
 def repair_model(
@@ -68,14 +82,14 @@ def repair_model(
         if not (abs(repaired_size - original_size) < 0.001).all():
             raise ValueError("Repair changed model scale; refusing to write output.")
 
-    write_mesh(mesh, chosen_output)
-    after = inspect_model(chosen_output, printer=printer)
+    written_output = _write_mesh_no_clobber(mesh, chosen_output)
+    after = inspect_model(written_output, printer=printer)
     warnings = after.warnings.copy()
     if not after.is_watertight:
         warnings.append("Repair completed, but the model is still not watertight.")
     return RepairResult(
         input_path=str(input_path),
-        output_path=str(chosen_output),
+        output_path=str(written_output),
         before=before,
         after=after,
         actions=actions,

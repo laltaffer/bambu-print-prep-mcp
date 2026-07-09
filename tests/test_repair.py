@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 import trimesh
 
+import bambu_print_prep_mcp.repair as repair_module
 from bambu_print_prep_mcp.repair import repair_model
 
 
@@ -36,6 +37,27 @@ def test_repair_model_refuses_existing_output_path_and_preserves_contents(
         repair_model(cube_stl, output_path=output_path)
 
     assert output_path.read_text(encoding="utf-8") == original_contents
+
+
+def test_repair_model_refuses_output_created_after_initial_check(
+    cube_stl: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output_path = tmp_path / "cube_repaired.stl"
+    original_contents = b"late output"
+    original_refuse_existing_output = repair_module._refuse_existing_output
+
+    def create_output_after_initial_check(path: Path) -> None:
+        original_refuse_existing_output(path)
+        path.write_bytes(original_contents)
+
+    monkeypatch.setattr(
+        repair_module, "_refuse_existing_output", create_output_after_initial_check
+    )
+
+    with pytest.raises(ValueError, match="Refusing to overwrite existing output"):
+        repair_model(cube_stl, output_path=output_path)
+
+    assert output_path.read_bytes() == original_contents
 
 
 def test_repair_model_refuses_mesh_with_no_usable_geometry_after_cleanup(
