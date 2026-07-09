@@ -1,0 +1,12 @@
+{
+  "bambu_lab_p2s": {
+    "id": "bambu_lab_p2s",
+    "display_name": "Bambu Lab P2S",
+    "build_volume": {
+      "width_mm": 256.0,
+      "depth_mm": 256.0,
+      "height_mm": 256.0
+    },
+    "default_nozzle_mm": 0.4
+  }
+}
