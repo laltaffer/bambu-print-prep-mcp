@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from bambu_print_prep_mcp.prepare import prepare_model_for_bambu
 
 
@@ -34,3 +36,15 @@ def test_prepare_repeated_runs_do_not_overwrite_outputs(cube_stl: Path, tmp_path
     assert first.json_report_path != second.json_report_path
     assert Path(first.final_model_path).exists()
     assert Path(second.final_model_path).exists()
+
+
+def test_prepare_invalid_target_height_leaves_output_dir_empty(
+    cube_stl: Path,
+    tmp_path: Path,
+) -> None:
+    output_dir = tmp_path / "prepared"
+
+    with pytest.raises(ValueError):
+        prepare_model_for_bambu(cube_stl, output_dir=output_dir, target_height_mm=-1)
+
+    assert list(output_dir.iterdir()) == []

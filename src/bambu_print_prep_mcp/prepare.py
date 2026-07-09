@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 from bambu_print_prep_mcp.analysis import inspect_model
@@ -25,6 +26,13 @@ def _reserve_prepare_paths(directory: Path, stem: str) -> tuple[Path, Path, Path
         index += 1
 
 
+def _validate_target_height(target_height_mm: float | None) -> None:
+    if target_height_mm is None:
+        return
+    if not math.isfinite(target_height_mm) or target_height_mm <= 0:
+        raise ValueError("Target height must be a finite value greater than zero.")
+
+
 def prepare_model_for_bambu(
     file_path: str | Path,
     output_dir: str | Path | None = None,
@@ -35,6 +43,7 @@ def prepare_model_for_bambu(
 ) -> PrepareResult:
     input_path = ensure_supported_input(file_path)
     directory = ensure_output_dir(output_dir, input_path)
+    _validate_target_height(target_height_mm)
     initial = inspect_model(input_path, printer=printer)
     repaired_path, prepared_path, markdown_report_path, json_report_path = _reserve_prepare_paths(
         directory,
