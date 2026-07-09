@@ -1,8 +1,26 @@
 from pathlib import Path
 
 import pytest
+import trimesh
 
 from bambu_print_prep_mcp.prepare import prepare_model_for_bambu
+
+
+def _flat_stl(path: Path) -> Path:
+    mesh = trimesh.Trimesh(
+        vertices=[
+            [0.0, 0.0, 0.0],
+            [20.0, 0.0, 0.0],
+            [20.0, 30.0, 0.0],
+            [0.0, 30.0, 0.0],
+        ],
+        faces=[
+            [0, 1, 2],
+            [0, 2, 3],
+        ],
+    )
+    mesh.export(path)
+    return path
 
 
 def test_prepare_model_for_bambu_writes_outputs(cube_stl: Path, tmp_path: Path) -> None:
@@ -46,5 +64,15 @@ def test_prepare_invalid_target_height_leaves_output_dir_empty(
 
     with pytest.raises(ValueError):
         prepare_model_for_bambu(cube_stl, output_dir=output_dir, target_height_mm=-1)
+
+    assert list(output_dir.iterdir()) == []
+
+
+def test_prepare_unscalable_model_cleans_up_intermediate_outputs(tmp_path: Path) -> None:
+    flat_stl = _flat_stl(tmp_path / "flat.stl")
+    output_dir = tmp_path / "prepared"
+
+    with pytest.raises(ValueError):
+        prepare_model_for_bambu(flat_stl, output_dir=output_dir, target_height_mm=10.0)
 
     assert list(output_dir.iterdir()) == []

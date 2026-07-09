@@ -33,6 +33,14 @@ def _validate_target_height(target_height_mm: float | None) -> None:
         raise ValueError("Target height must be a finite value greater than zero.")
 
 
+def _cleanup_generated_paths(paths: tuple[Path, ...]) -> None:
+    for path in paths:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            continue
+
+
 def prepare_model_for_bambu(
     file_path: str | Path,
     output_dir: str | Path | None = None,
@@ -49,49 +57,54 @@ def prepare_model_for_bambu(
         directory,
         input_path.stem,
     )
+    generated_paths = (repaired_path, prepared_path, markdown_report_path, json_report_path)
 
-    repaired = repair_model(input_path, output_path=repaired_path, printer=printer)
-    current_model = Path(repaired.output_path)
+    try:
+        repaired = repair_model(input_path, output_path=repaired_path, printer=printer)
+        current_model = Path(repaired.output_path)
 
-    if target_height_mm is not None:
-        scaled = normalize_scale(
+        if target_height_mm is not None:
+            scaled = normalize_scale(
+                current_model,
+                output_path=prepared_path,
+                target_height_mm=target_height_mm,
+                printer=printer,
+            )
+            current_model = Path(scaled.output_path)
+            warnings = repaired.warnings + scaled.warnings
+        else:
+            if prepared_path.exists():
+                raise ValueError(f"Refusing to overwrite existing output file: {prepared_path}")
+            current_model.rename(prepared_path)
+            current_model = prepared_path
+            warnings = repaired.warnings
+
+        final = inspect_model(current_model, printer=printer)
+        recommendation = recommend_print_settings(
             current_model,
-            output_path=prepared_path,
-            target_height_mm=target_height_mm,
             printer=printer,
+            material=material,
+            intent=intent,
         )
-        current_model = Path(scaled.output_path)
-        warnings = repaired.warnings + scaled.warnings
-    else:
-        if prepared_path.exists():
-            raise ValueError(f"Refusing to overwrite existing output file: {prepared_path}")
-        current_model.rename(prepared_path)
-        current_model = prepared_path
-        warnings = repaired.warnings
 
-    final = inspect_model(current_model, printer=printer)
-    recommendation = recommend_print_settings(
-        current_model,
-        printer=printer,
-        material=material,
-        intent=intent,
-    )
-
-    partial = PrepareResult(
-        input_path=str(input_path),
-        final_model_path=str(current_model),
-        markdown_report_path=str(markdown_report_path),
-        json_report_path=str(json_report_path),
-        initial_inspection=initial,
-        final_inspection=final,
-        recommendation=recommendation,
-        warnings=warnings + final.warnings,
-    )
-    markdown_path = write_markdown_report(partial, partial.markdown_report_path)
-    json_path = write_json_report(partial, partial.json_report_path)
-    return partial.model_copy(
-        update={
-            "markdown_report_path": str(markdown_path),
-            "json_report_path": str(json_path),
-        }
-    )
+        partial = PrepareResult(
+            input_path=str(input_path),
+            final_model_path=str(current_model),
+            markdown_report_path=str(markdown_report_path),
+            json_report_path=str(json_report_path),
+            initial_inspection=initial,
+            final_inspection=final,
+            recommendation=recommendation,
+            warnings=warnings + final.warnings,
+        )
+        markdown_path = write_markdown_report(partial, partial.markdown_report_path)
+        json_path = write_json_report(partial, partial.json_report_path)
+        return partial.model_copy(
+            update={
+                "markdown_report_path": str(markdown_path),
+                "json_report_path": str(json_path),
+            }
+        )
+    except Exception:
+        _cleanup_generated_paths(generated_paths)
+        raise
