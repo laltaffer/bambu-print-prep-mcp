@@ -3,10 +3,31 @@ from pydantic import ValidationError
 
 from bambu_print_prep_mcp.models import (
     Dimensions,
-    PrintSettingsRecommendation,
     PrinterProfile,
+    PrintSettingsRecommendation,
     ScaleResult,
 )
+
+
+def valid_recommendation_data() -> dict[str, object]:
+    return {
+        "printer": "bambu_lab_p2s",
+        "material": "pla",
+        "intent": "balanced",
+        "layer_height_mm": 0.2,
+        "support_type": "normal",
+        "support_style": "snug",
+        "support_placement": "build_plate_only",
+        "threshold_angle_degrees": 45,
+        "top_z_distance_mm": 0.2,
+        "top_interface_layers": 2,
+        "brim_enabled": True,
+        "brim_width_mm": 5.0,
+        "wall_loops": 3,
+        "infill_percent": 15,
+        "notes": [],
+        "bambu_studio_steps": [],
+    }
 
 
 def test_dimensions_max_axis_and_as_tuple() -> None:
@@ -52,33 +73,29 @@ def test_scale_result_rejects_invalid_scale_factor(scale_factor: float) -> None:
 @pytest.mark.parametrize(
     ("field", "value"),
     [
+        ("layer_height_mm", 0.0),
+        ("layer_height_mm", 1.1),
+        ("layer_height_mm", float("inf")),
         ("threshold_angle_degrees", -1),
         ("threshold_angle_degrees", 91),
+        ("top_z_distance_mm", -0.1),
+        ("top_z_distance_mm", 2.1),
+        ("top_z_distance_mm", float("nan")),
+        ("top_interface_layers", -1),
+        ("top_interface_layers", 21),
+        ("brim_width_mm", -0.1),
+        ("brim_width_mm", 50.1),
+        ("brim_width_mm", float("inf")),
+        ("wall_loops", -1),
+        ("wall_loops", 21),
         ("infill_percent", -1),
         ("infill_percent", 101),
     ],
 )
-def test_print_settings_recommendation_rejects_invalid_angle_and_infill(
-    field: str, value: int
+def test_print_settings_recommendation_rejects_out_of_range_numeric_fields(
+    field: str, value: int | float
 ) -> None:
-    data = {
-        "printer": "bambu_lab_p2s",
-        "material": "pla",
-        "intent": "balanced",
-        "layer_height_mm": 0.2,
-        "support_type": "normal",
-        "support_style": "snug",
-        "support_placement": "build_plate_only",
-        "threshold_angle_degrees": 45,
-        "top_z_distance_mm": 0.2,
-        "top_interface_layers": 2,
-        "brim_enabled": True,
-        "brim_width_mm": 5.0,
-        "wall_loops": 3,
-        "infill_percent": 15,
-        "notes": [],
-        "bambu_studio_steps": [],
-    }
+    data = valid_recommendation_data()
     data[field] = value
 
     with pytest.raises(ValidationError):
