@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.mobileconfig
+
+# Generated model/output data
+models/
+outputs/
+reports/
+*.stl
+*.3mf
+*.gcode
+*.step
+*.stp
+*.obj
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/
+
+# Local agent/session metadata
+CLAUDE.local.md
+AGENTS.local.md
+*.local.json

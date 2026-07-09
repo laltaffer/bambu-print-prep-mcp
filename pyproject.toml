@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bambu-print-prep-mcp"
+version = "0.1.0"
+description = "Local-first MCP server for preparing STL files for Bambu Studio."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Bambu Print Prep MCP Contributors" }]
+dependencies = [
+  "mcp[cli]>=1.27,<2",
+  "numpy>=1.26",
+  "pydantic>=2.7",
+  "trimesh>=4.4",
+]
+
+[project.optional-dependencies]
+dev = [
+  "detect-secrets>=1.5",
+  "pytest>=8.2",
+  "ruff>=0.5",
+]
+
+[project.scripts]
+bambu-print-prep = "bambu_print_prep_mcp.cli:main"
+bambu-print-prep-mcp = "bambu_print_prep_mcp.server:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bambu_print_prep_mcp"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
