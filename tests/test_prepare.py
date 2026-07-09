@@ -1,0 +1,36 @@
+from pathlib import Path
+
+from bambu_print_prep_mcp.prepare import prepare_model_for_bambu
+
+
+def test_prepare_model_for_bambu_writes_outputs(cube_stl: Path, tmp_path: Path) -> None:
+    result = prepare_model_for_bambu(
+        cube_stl,
+        output_dir=tmp_path / "prepared",
+        target_height_mm=80.0,
+        intent="statue",
+    )
+
+    assert Path(result.final_model_path).exists()
+    assert Path(result.markdown_report_path).exists()
+    assert Path(result.json_report_path).exists()
+    assert result.final_inspection.dimensions.height_mm == 80.0
+    assert result.recommendation.support_type == "Tree"
+
+
+def test_prepare_without_target_keeps_model_size(cube_stl: Path, tmp_path: Path) -> None:
+    result = prepare_model_for_bambu(cube_stl, output_dir=tmp_path / "prepared")
+
+    assert result.final_inspection.dimensions.height_mm == 40.0
+
+
+def test_prepare_repeated_runs_do_not_overwrite_outputs(cube_stl: Path, tmp_path: Path) -> None:
+    output_dir = tmp_path / "prepared"
+    first = prepare_model_for_bambu(cube_stl, output_dir=output_dir)
+    second = prepare_model_for_bambu(cube_stl, output_dir=output_dir)
+
+    assert first.final_model_path != second.final_model_path
+    assert first.markdown_report_path != second.markdown_report_path
+    assert first.json_report_path != second.json_report_path
+    assert Path(first.final_model_path).exists()
+    assert Path(second.final_model_path).exists()
