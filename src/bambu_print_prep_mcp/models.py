@@ -6,9 +6,9 @@ from pydantic import BaseModel, Field
 
 
 class Dimensions(BaseModel):
-    width_mm: float = Field(ge=0)
-    depth_mm: float = Field(ge=0)
-    height_mm: float = Field(ge=0)
+    width_mm: float = Field(ge=0, allow_inf_nan=False)
+    depth_mm: float = Field(ge=0, allow_inf_nan=False)
+    height_mm: float = Field(ge=0, allow_inf_nan=False)
 
     def as_tuple(self) -> tuple[float, float, float]:
         return (self.width_mm, self.depth_mm, self.height_mm)
@@ -51,7 +51,7 @@ class ScaleResult(BaseModel):
     output_path: str
     original_dimensions: Dimensions
     new_dimensions: Dimensions
-    scale_factor: float
+    scale_factor: float = Field(gt=0, allow_inf_nan=False)
     fits_build_volume: bool
     warnings: list[str] = Field(default_factory=list)
 
@@ -60,17 +60,17 @@ class PrintSettingsRecommendation(BaseModel):
     printer: str
     material: str
     intent: str
-    layer_height_mm: float
+    layer_height_mm: float = Field(gt=0, allow_inf_nan=False)
     support_type: str
     support_style: str
     support_placement: str
-    threshold_angle_degrees: int
-    top_z_distance_mm: float
-    top_interface_layers: int
+    threshold_angle_degrees: int = Field(ge=0, le=90)
+    top_z_distance_mm: float = Field(ge=0, allow_inf_nan=False)
+    top_interface_layers: int = Field(ge=0)
     brim_enabled: bool
-    brim_width_mm: float
-    wall_loops: int
-    infill_percent: int
+    brim_width_mm: float = Field(ge=0, allow_inf_nan=False)
+    wall_loops: int = Field(ge=0)
+    infill_percent: int = Field(ge=0, le=100)
     notes: list[str]
     bambu_studio_steps: list[str]
 
