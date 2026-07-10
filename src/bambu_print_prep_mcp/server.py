@@ -6,6 +6,7 @@ from bambu_print_prep_mcp.analysis import DEFAULT_PRINTER
 from bambu_print_prep_mcp.analysis import inspect_model as inspect_model_core
 from bambu_print_prep_mcp.cut import cut_plane as cut_plane_core
 from bambu_print_prep_mcp.cut import split_parts as split_parts_core
+from bambu_print_prep_mcp.holes import punch_hole as punch_hole_core
 from bambu_print_prep_mcp.repair import repair_model as repair_model_core
 from bambu_print_prep_mcp.transform import mirror_model as mirror_model_core
 from bambu_print_prep_mcp.transform import rotate_model as rotate_model_core
@@ -100,6 +101,34 @@ def scale_to_dimension(
         file_path,
         axis=axis,
         target_mm=target_mm,
+        output_path=output_path,
+        printer=printer,
+    ).model_dump()
+
+
+@mcp.tool()
+def punch_hole(
+    file_path: str,
+    axis: str,
+    diameter_mm: float,
+    at_width_mm: float | None = None,
+    at_depth_mm: float | None = None,
+    at_height_mm: float | None = None,
+    hole_depth_mm: float | None = None,
+    output_path: str | None = None,
+    printer: str = DEFAULT_PRINTER,
+) -> dict:
+    """Punch a cylindrical hole along width/depth/height. Give the hole's center via
+    the two position parameters perpendicular to the axis (mm from the model's
+    minimum). Through hole by default; hole_depth_mm drills from the axis maximum."""
+    return punch_hole_core(
+        file_path,
+        axis=axis,
+        diameter_mm=diameter_mm,
+        at_width_mm=at_width_mm,
+        at_depth_mm=at_depth_mm,
+        at_height_mm=at_height_mm,
+        hole_depth_mm=hole_depth_mm,
         output_path=output_path,
         printer=printer,
     ).model_dump()

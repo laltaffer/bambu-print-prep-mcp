@@ -26,6 +26,7 @@ def test_tool_surface_names() -> None:
     assert "split_parts" in names
     assert "mirror_model" in names
     assert "rotate_model" in names
+    assert "punch_hole" in names
     assert "inspect_model" in names
     assert "repair_model" in names
     assert "normalize_scale" not in names
@@ -37,6 +38,24 @@ def test_cut_plane_tool_declares_required_parameters() -> None:
     assert set(schemas["split_parts"]["required"]) == {"file_path"}
     assert set(schemas["mirror_model"]["required"]) == {"file_path", "axis"}
     assert set(schemas["rotate_model"]["required"]) == {"file_path", "axis", "degrees"}
+    assert set(schemas["punch_hole"]["required"]) == {"file_path", "axis", "diameter_mm"}
+
+
+def test_punch_hole_tool_end_to_end(cube_stl: Path, tmp_path: Path) -> None:
+    data = call_tool(
+        "punch_hole",
+        {
+            "file_path": str(cube_stl),
+            "axis": "height",
+            "diameter_mm": 6.0,
+            "at_width_mm": 10.0,
+            "at_depth_mm": 15.0,
+            "output_path": str(tmp_path / "holed.stl"),
+        },
+    )
+
+    assert Path(data["output_path"]).exists()
+    assert data["inspection"]["is_watertight"] is True
 
 
 def test_cut_plane_tool_end_to_end(cube_stl: Path, tmp_path: Path) -> None:
