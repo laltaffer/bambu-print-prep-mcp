@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from collections.abc import Sequence
 
-from bambu_print_prep_mcp.analysis import inspect_model
+from bambu_print_prep_mcp.analysis import DEFAULT_PRINTER, inspect_model
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -12,7 +12,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     inspect_parser = subparsers.add_parser("inspect")
     inspect_parser.add_argument("file_path")
-    inspect_parser.add_argument("--printer", default="bambu_lab_p2s")
+    inspect_parser.add_argument("--printer", default=DEFAULT_PRINTER)
     return parser
 
 

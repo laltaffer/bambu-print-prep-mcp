@@ -12,11 +12,15 @@ def test_ensure_supported_input_accepts_stl(tmp_path: Path) -> None:
     assert ensure_supported_input(model) == model.resolve()
 
 
-def test_ensure_supported_input_rejects_non_stl(tmp_path: Path) -> None:
+def test_ensure_supported_input_accepts_3mf(cube_3mf: Path) -> None:
+    assert ensure_supported_input(cube_3mf) == cube_3mf.resolve()
+
+
+def test_ensure_supported_input_rejects_unsupported_format(tmp_path: Path) -> None:
     model = tmp_path / "part.obj"
     model.write_text("not an stl", encoding="utf-8")
 
-    with pytest.raises(ValueError, match="Only STL files"):
+    with pytest.raises(ValueError, match="Only STL and 3MF files"):
         ensure_supported_input(model)
 
 

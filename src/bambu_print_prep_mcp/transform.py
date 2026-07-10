@@ -3,17 +3,13 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from bambu_print_prep_mcp.analysis import fits_build_volume, inspect_model, load_printer_profile
+from bambu_print_prep_mcp.analysis import DEFAULT_PRINTER, inspect_model, load_printer_profile
 from bambu_print_prep_mcp.mesh_io import load_mesh, write_mesh
 from bambu_print_prep_mcp.models import ScaleResult
-from bambu_print_prep_mcp.security import refuse_overwrite_input, safe_output_path
+from bambu_print_prep_mcp.security import resolve_output_path
+from bambu_print_prep_mcp.validation import fits_build_volume
 
 _INVALID_SCALE_MESSAGE = "Scale factor must be a finite value greater than zero."
-
-
-def _refuse_existing_output(output_path: Path) -> None:
-    if output_path.exists():
-        raise ValueError(f"Refusing to overwrite existing output file: {output_path}")
 
 
 def _scale_to_target(source_dimension: float, target_dimension: float, axis_name: str) -> float:
@@ -55,22 +51,15 @@ def _chosen_scale_factor(
 def normalize_scale(
     file_path: str | Path,
     output_path: str | Path | None = None,
-    output_dir: str | Path | None = None,
     target_height_mm: float | None = None,
     target_width_mm: float | None = None,
     target_depth_mm: float | None = None,
     scale_factor: float | None = None,
-    printer: str = "bambu_lab_p2s",
+    printer: str = DEFAULT_PRINTER,
 ) -> ScaleResult:
     before = inspect_model(file_path, printer=printer)
     input_path = Path(before.file_path)
-    chosen_output = (
-        Path(output_path).expanduser().resolve()
-        if output_path is not None
-        else safe_output_path(input_path, output_dir, "_scaled", ".stl")
-    )
-    refuse_overwrite_input(input_path, chosen_output)
-    _refuse_existing_output(chosen_output)
+    chosen_output = resolve_output_path(input_path, output_path, None, "_scaled")
     factor = _chosen_scale_factor(
         before.dimensions.width_mm,
         before.dimensions.depth_mm,
@@ -87,7 +76,6 @@ def normalize_scale(
     write_mesh(mesh, chosen_output)
     after = inspect_model(chosen_output, printer=printer)
     profile = load_printer_profile(printer)
-    warnings = after.warnings.copy()
     return ScaleResult(
         input_path=str(input_path),
         output_path=str(chosen_output),
@@ -95,5 +83,5 @@ def normalize_scale(
         new_dimensions=after.dimensions,
         scale_factor=round(float(factor), 6),
         fits_build_volume=fits_build_volume(after.dimensions, profile),
-        warnings=warnings,
+        warnings=after.warnings.copy(),
     )

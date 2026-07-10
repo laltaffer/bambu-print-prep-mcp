@@ -22,6 +22,26 @@ def test_inspect_model_warns_for_oversized_model(oversized_stl: Path) -> None:
         "larger than the Bambu Lab P2S build volume" in warning for warning in result.warnings
     )
     assert any("wrong units" in warning for warning in result.warnings)
+    assert not any("inches" in warning for warning in result.warnings)
+
+
+def test_inspect_model_warns_for_implausibly_small_model(tiny_stl: Path) -> None:
+    result = inspect_model(tiny_stl)
+
+    warnings_text = " ".join(result.warnings)
+    assert "wrong units" in warnings_text
+    assert "inches" in warnings_text
+    assert "meters" in warnings_text
+
+
+def test_inspect_model_accepts_3mf(cube_3mf: Path) -> None:
+    result = inspect_model(cube_3mf)
+
+    dims = sorted(
+        [result.dimensions.width_mm, result.dimensions.depth_mm, result.dimensions.height_mm]
+    )
+    assert dims == [20.0, 30.0, 40.0]
+    assert result.is_watertight is True
 
 
 def test_load_printer_profile() -> None:

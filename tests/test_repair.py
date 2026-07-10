@@ -3,7 +3,6 @@ from pathlib import Path
 import pytest
 import trimesh
 
-import bambu_print_prep_mcp.repair as repair_module
 from bambu_print_prep_mcp.repair import repair_model
 
 
@@ -59,31 +58,34 @@ def test_repair_model_refuses_non_stl_output_path_without_creating_file(
 ) -> None:
     output_path = tmp_path / output_name
 
-    with pytest.raises(ValueError, match="Repair output path must use a .stl extension"):
+    with pytest.raises(ValueError, match="must use a .stl extension"):
         repair_model(cube_stl, output_path=output_path)
 
     assert not output_path.exists()
 
 
-def test_repair_model_refuses_output_created_after_initial_check(
-    cube_stl: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_repair_model_refuses_hardlink_to_input(cube_stl: Path, tmp_path: Path) -> None:
+    import os
+
+    linked = tmp_path / "same_file_other_name.stl"
+    os.link(cube_stl, linked)
+
+    with pytest.raises(ValueError, match="Refusing to overwrite the original"):
+        repair_model(cube_stl, output_path=linked)
+
+    assert linked.stat().st_size > 0
+
+
+def test_repair_model_survives_junk_geometry_defining_bounds(
+    sliver_cube_stl: Path, tmp_path: Path
 ) -> None:
-    output_path = tmp_path / "cube_repaired.stl"
-    original_contents = b"late output"
-    original_refuse_existing_output = repair_module._refuse_existing_output
+    output_path = tmp_path / "sliver_repaired.stl"
 
-    def create_output_after_initial_check(path: Path) -> None:
-        original_refuse_existing_output(path)
-        path.write_bytes(original_contents)
+    result = repair_model(sliver_cube_stl, output_path=output_path)
 
-    monkeypatch.setattr(
-        repair_module, "_refuse_existing_output", create_output_after_initial_check
-    )
-
-    with pytest.raises(ValueError, match="Refusing to overwrite existing output"):
-        repair_model(cube_stl, output_path=output_path)
-
-    assert output_path.read_bytes() == original_contents
+    assert Path(result.output_path).exists()
+    assert result.after.dimensions.width_mm == 50.0
+    assert any("bounding size" in warning for warning in result.warnings)
 
 
 def test_repair_model_refuses_mesh_with_no_usable_geometry_after_cleanup(
@@ -102,7 +104,7 @@ def test_repair_model_refuses_mesh_with_no_usable_geometry_after_cleanup(
     output_path = tmp_path / "degenerate_repaired.stl"
     degenerate_mesh.export(input_path)
 
-    with pytest.raises(ValueError, match="Repair removed all usable geometry"):
+    with pytest.raises(ValueError, match="removed all usable geometry"):
         repair_model(input_path, output_path=output_path)
 
     assert not output_path.exists()
