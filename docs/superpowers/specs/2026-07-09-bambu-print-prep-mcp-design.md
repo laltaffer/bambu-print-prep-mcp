@@ -1,3 +1,8 @@
+> **SUPERSEDED (2026-07-09):** this document describes the pre-redirect product
+> (STL prep + reports + settings recommendations). The current product — Claude-
+> driven model modification with Bambu Studio handoff — is specified in GitHub
+> issue #1 and docs/adr/.
+
 # Bambu Print Prep MCP Design
 
 ## Purpose

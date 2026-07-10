@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "bambu-print-prep-mcp"
 version = "0.1.0"
-description = "Local-first MCP server for preparing STL files for Bambu Studio."
+description = "Local-first MCP server for modifying 3D models and handing them to Bambu Studio."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

@@ -128,3 +128,55 @@ def test_core_error_surfaces_through_tool(cube_stl: Path, tmp_path: Path) -> Non
                 },
             )
         )
+
+
+def test_inspect_model_tool_end_to_end(cube_stl: Path) -> None:
+    data = call_tool("inspect_model", {"file_path": str(cube_stl)})
+
+    assert data["dimensions"] == {"width_mm": 20.0, "depth_mm": 30.0, "height_mm": 40.0}
+    assert data["is_watertight"] is True
+    assert data["fits_build_volume"] is True
+
+
+def test_repair_model_tool_end_to_end(cube_stl: Path, tmp_path: Path) -> None:
+    data = call_tool(
+        "repair_model",
+        {"file_path": str(cube_stl), "output_path": str(tmp_path / "repaired.stl")},
+    )
+
+    assert Path(data["output_path"]).exists()
+    assert "fix_normals" in data["actions"]
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments", "match"),
+    [
+        ("inspect_model", {"file_path": "/nowhere/ghost.stl"}, "does not exist"),
+        ("repair_model", {"file_path": "FILE", "output_path": "OUT.obj"}, ".stl extension"),
+        ("cut_plane", {"file_path": "FILE", "axis": "diagonal", "position_mm": 5.0}, "axis"),
+        ("split_parts", {"file_path": "FILE"}, "single connected part"),
+        ("mirror_model", {"file_path": "FILE", "axis": "up"}, "axis"),
+        ("rotate_model", {"file_path": "FILE", "axis": "sideways", "degrees": 90.0}, "axis"),
+        (
+            "punch_hole",
+            {"file_path": "FILE", "axis": "height", "diameter_mm": 6.0, "at_height_mm": 4.0},
+            "at_width_mm and at_depth_mm",
+        ),
+        ("open_in_bambu_studio", {"file_paths": []}, "at least one"),
+        ("open_in_bambu_studio", {"file_paths": ["/nowhere/ghost.stl"]}, "does not exist"),
+        (
+            "scale_to_dimension",
+            {"file_path": "FILE", "axis": "height", "target_mm": -1.0},
+            "greater than zero",
+        ),
+    ],
+)
+def test_every_tool_surfaces_structured_errors(
+    cube_stl: Path, tool: str, arguments: dict, match: str
+) -> None:
+    filled = {
+        key: (str(cube_stl) if value == "FILE" else value) for key, value in arguments.items()
+    }
+
+    with pytest.raises(ToolError, match=match):
+        asyncio.run(mcp.call_tool(tool, filled))
