@@ -6,6 +6,7 @@ from bambu_print_prep_mcp.analysis import DEFAULT_PRINTER
 from bambu_print_prep_mcp.analysis import inspect_model as inspect_model_core
 from bambu_print_prep_mcp.cut import cut_plane as cut_plane_core
 from bambu_print_prep_mcp.cut import split_parts as split_parts_core
+from bambu_print_prep_mcp.handoff import open_in_bambu_studio as open_in_bambu_studio_core
 from bambu_print_prep_mcp.holes import punch_hole as punch_hole_core
 from bambu_print_prep_mcp.repair import repair_model as repair_model_core
 from bambu_print_prep_mcp.transform import mirror_model as mirror_model_core
@@ -167,6 +168,13 @@ def rotate_model(
         output_path=output_path,
         printer=printer,
     ).model_dump()
+
+
+@mcp.tool()
+def open_in_bambu_studio(file_paths: list[str]) -> dict:
+    """Open one or more model files (STL or 3MF) in Bambu Studio on this Mac,
+    ready to slice and print."""
+    return open_in_bambu_studio_core(file_paths).model_dump()
 
 
 def main() -> None:

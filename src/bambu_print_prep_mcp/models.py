@@ -41,6 +41,11 @@ class RepairResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class HandoffResult(BaseModel):
+    opened_paths: list[str]
+    application: str = "Bambu Studio"
+
+
 class OperationResult(BaseModel):
     input_path: str
     output_path: str

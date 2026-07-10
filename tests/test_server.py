@@ -27,6 +27,7 @@ def test_tool_surface_names() -> None:
     assert "mirror_model" in names
     assert "rotate_model" in names
     assert "punch_hole" in names
+    assert "open_in_bambu_studio" in names
     assert "inspect_model" in names
     assert "repair_model" in names
     assert "normalize_scale" not in names
@@ -39,6 +40,7 @@ def test_cut_plane_tool_declares_required_parameters() -> None:
     assert set(schemas["mirror_model"]["required"]) == {"file_path", "axis"}
     assert set(schemas["rotate_model"]["required"]) == {"file_path", "axis", "degrees"}
     assert set(schemas["punch_hole"]["required"]) == {"file_path", "axis", "diameter_mm"}
+    assert set(schemas["open_in_bambu_studio"]["required"]) == {"file_paths"}
 
 
 def test_punch_hole_tool_end_to_end(cube_stl: Path, tmp_path: Path) -> None:
