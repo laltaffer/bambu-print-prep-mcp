@@ -3,10 +3,6 @@ from __future__ import annotations
 from mcp.server.fastmcp import FastMCP
 
 from bambu_print_prep_mcp.analysis import inspect_model as inspect_model_core
-from bambu_print_prep_mcp.prepare import prepare_model_for_bambu as prepare_model_for_bambu_core
-from bambu_print_prep_mcp.recommendations import (
-    recommend_print_settings as recommend_print_settings_core,
-)
 from bambu_print_prep_mcp.repair import repair_model as repair_model_core
 from bambu_print_prep_mcp.transform import normalize_scale as normalize_scale_core
 
@@ -54,42 +50,6 @@ def normalize_scale(
         target_depth_mm=target_depth_mm,
         scale_factor=scale_factor,
         printer=printer,
-    ).model_dump()
-
-
-@mcp.tool()
-def recommend_print_settings(
-    file_path: str,
-    printer: str = "bambu_lab_p2s",
-    material: str = "PLA",
-    intent: str = "statue",
-) -> dict:
-    """Recommend Bambu Studio settings for a local STL file."""
-    return recommend_print_settings_core(
-        file_path,
-        printer=printer,
-        material=material,
-        intent=intent,
-    ).model_dump()
-
-
-@mcp.tool()
-def prepare_model_for_bambu(
-    file_path: str,
-    output_dir: str | None = None,
-    printer: str = "bambu_lab_p2s",
-    material: str = "PLA",
-    target_height_mm: float | None = None,
-    intent: str = "statue",
-) -> dict:
-    """Inspect, repair, optionally scale, and report Bambu Studio settings."""
-    return prepare_model_for_bambu_core(
-        file_path,
-        output_dir=output_dir,
-        printer=printer,
-        material=material,
-        target_height_mm=target_height_mm,
-        intent=intent,
     ).model_dump()
 
 

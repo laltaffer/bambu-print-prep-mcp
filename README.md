@@ -16,7 +16,6 @@ pip install -e ".[dev]"
 
 ```bash
 bambu-print-prep inspect /path/to/model.stl
-bambu-print-prep prepare /path/to/model.stl --target-height-mm 130 --output-dir outputs
 ```
 
 ## MCP Server
@@ -35,6 +34,6 @@ Before pushing publicly:
 
 - Run `git status --short` and review every tracked file.
 - Search tracked source files for local machine paths, personal identifiers, credentials, and generated-file metadata.
-- Run `detect-secrets scan --baseline .secrets.baseline`.
+- Run `detect-secrets-hook --baseline .secrets.baseline $(git ls-files)` and confirm it exits 0.
 - Confirm no personal model files, screenshots, reports, printer identifiers, or local paths are staged.
 - Confirm generated outputs remain under ignored directories such as `outputs/`.

@@ -11,6 +11,8 @@ requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Bambu Print Prep MCP Contributors" }]
 dependencies = [
+  "manifold3d>=2.5",
+  "mapbox_earcut>=1.0",
   "mcp[cli]>=1.27,<2",
   "networkx>=3.0",
   "numpy>=1.26",

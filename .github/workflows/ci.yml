@@ -22,4 +22,4 @@ jobs:
       - name: Test
         run: pytest -v
       - name: Secret scan
-        run: detect-secrets scan --baseline .secrets.baseline
+        run: detect-secrets-hook --baseline .secrets.baseline $(git ls-files)
