@@ -5,74 +5,35 @@ from pathlib import Path
 
 from bambu_print_prep_mcp.analysis import DEFAULT_PRINTER, inspect_model, load_printer_profile
 from bambu_print_prep_mcp.mesh_io import load_mesh, write_mesh
-from bambu_print_prep_mcp.models import ScaleResult
+from bambu_print_prep_mcp.models import MeshInspection, ScaleResult
 from bambu_print_prep_mcp.security import resolve_output_path
-from bambu_print_prep_mcp.validation import fits_build_volume
+from bambu_print_prep_mcp.validation import ensure_usable_geometry, fits_build_volume
 
-_INVALID_SCALE_MESSAGE = "Scale factor must be a finite value greater than zero."
-
-
-def _scale_to_target(source_dimension: float, target_dimension: float, axis_name: str) -> float:
-    if source_dimension <= 0:
-        raise ValueError(f"Source {axis_name} must be greater than zero to scale by target.")
-    return target_dimension / source_dimension
+_AXES = ("width", "depth", "height")
+MIN_RESULT_MAX_AXIS_MM = 0.01
+MAX_RESULT_MAX_AXIS_MM = 100_000.0
 
 
-def _chosen_scale_factor(
-    current_width: float,
-    current_depth: float,
-    current_height: float,
-    target_width_mm: float | None,
-    target_depth_mm: float | None,
-    target_height_mm: float | None,
-    scale_factor: float | None,
-) -> float:
-    provided = [
-        target_width_mm is not None,
-        target_depth_mm is not None,
-        target_height_mm is not None,
-        scale_factor is not None,
-    ]
-    if sum(provided) != 1:
-        raise ValueError(
-            "Provide exactly one of target_width_mm, target_depth_mm, "
-            "target_height_mm, or scale_factor."
-        )
-    if target_width_mm is not None:
-        return _scale_to_target(current_width, target_width_mm, "width")
-    if target_depth_mm is not None:
-        return _scale_to_target(current_depth, target_depth_mm, "depth")
-    if target_height_mm is not None:
-        return _scale_to_target(current_height, target_height_mm, "height")
-    assert scale_factor is not None
-    return scale_factor
-
-
-def normalize_scale(
-    file_path: str | Path,
-    output_path: str | Path | None = None,
-    target_height_mm: float | None = None,
-    target_width_mm: float | None = None,
-    target_depth_mm: float | None = None,
-    scale_factor: float | None = None,
-    printer: str = DEFAULT_PRINTER,
+def _apply_scale(
+    before: MeshInspection,
+    factor: float,
+    output_path: str | Path | None,
+    printer: str,
 ) -> ScaleResult:
-    before = inspect_model(file_path, printer=printer)
+    if not math.isfinite(factor) or factor <= 0:
+        raise ValueError("Scale factor must be a finite value greater than zero.")
     input_path = Path(before.file_path)
     chosen_output = resolve_output_path(input_path, output_path, None, "_scaled")
-    factor = _chosen_scale_factor(
-        before.dimensions.width_mm,
-        before.dimensions.depth_mm,
-        before.dimensions.height_mm,
-        target_width_mm,
-        target_depth_mm,
-        target_height_mm,
-        scale_factor,
-    )
-    if not math.isfinite(factor) or factor <= 0:
-        raise ValueError(_INVALID_SCALE_MESSAGE)
+    resulting_max = before.dimensions.max_axis_mm * factor
+    if not MIN_RESULT_MAX_AXIS_MM <= resulting_max <= MAX_RESULT_MAX_AXIS_MM:
+        raise ValueError(
+            f"Scaling by {factor:g} would make the model's largest dimension "
+            f"{resulting_max:g} mm; refusing implausible results outside "
+            f"{MIN_RESULT_MAX_AXIS_MM:g}-{MAX_RESULT_MAX_AXIS_MM:g} mm."
+        )
     mesh = load_mesh(input_path)
     mesh.apply_scale(factor)
+    ensure_usable_geometry(mesh)
     write_mesh(mesh, chosen_output)
     after = inspect_model(chosen_output, printer=printer)
     profile = load_printer_profile(printer)
@@ -81,7 +42,38 @@ def normalize_scale(
         output_path=str(chosen_output),
         original_dimensions=before.dimensions,
         new_dimensions=after.dimensions,
-        scale_factor=round(float(factor), 6),
+        scale_factor=float(factor),
         fits_build_volume=fits_build_volume(after.dimensions, profile),
         warnings=after.warnings.copy(),
     )
+
+
+def scale_by_factor(
+    file_path: str | Path,
+    factor: float,
+    output_path: str | Path | None = None,
+    printer: str = DEFAULT_PRINTER,
+) -> ScaleResult:
+    before = inspect_model(file_path, printer=printer)
+    return _apply_scale(before, factor, output_path, printer)
+
+
+def scale_to_dimension(
+    file_path: str | Path,
+    axis: str,
+    target_mm: float,
+    output_path: str | Path | None = None,
+    printer: str = DEFAULT_PRINTER,
+) -> ScaleResult:
+    axis_normalized = axis.lower().strip()
+    if axis_normalized not in _AXES:
+        raise ValueError(f"Unknown axis '{axis}'. Use one of: width, depth, height.")
+    if not math.isfinite(target_mm) or target_mm <= 0:
+        raise ValueError("Target dimension must be a finite value greater than zero.")
+    before = inspect_model(file_path, printer=printer)
+    source = getattr(before.dimensions, f"{axis_normalized}_mm")
+    if source <= 0:
+        raise ValueError(
+            f"Source {axis_normalized} must be greater than zero to scale by target."
+        )
+    return _apply_scale(before, target_mm / source, output_path, printer)

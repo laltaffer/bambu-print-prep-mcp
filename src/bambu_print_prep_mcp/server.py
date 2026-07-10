@@ -5,7 +5,8 @@ from mcp.server.fastmcp import FastMCP
 from bambu_print_prep_mcp.analysis import DEFAULT_PRINTER
 from bambu_print_prep_mcp.analysis import inspect_model as inspect_model_core
 from bambu_print_prep_mcp.repair import repair_model as repair_model_core
-from bambu_print_prep_mcp.transform import normalize_scale as normalize_scale_core
+from bambu_print_prep_mcp.transform import scale_by_factor as scale_by_factor_core
+from bambu_print_prep_mcp.transform import scale_to_dimension as scale_to_dimension_core
 
 mcp = FastMCP("Bambu Print Prep MCP", json_response=True)
 
@@ -31,23 +32,35 @@ def repair_model(
 
 
 @mcp.tool()
-def normalize_scale(
+def scale_by_factor(
     file_path: str,
+    factor: float,
     output_path: str | None = None,
-    target_height_mm: float | None = None,
-    target_width_mm: float | None = None,
-    target_depth_mm: float | None = None,
-    scale_factor: float | None = None,
     printer: str = DEFAULT_PRINTER,
 ) -> dict:
-    """Scale a model to a target dimension or explicit scale factor."""
-    return normalize_scale_core(
+    """Scale a model uniformly by a factor; writes a new derived STL."""
+    return scale_by_factor_core(
         file_path,
+        factor=factor,
         output_path=output_path,
-        target_height_mm=target_height_mm,
-        target_width_mm=target_width_mm,
-        target_depth_mm=target_depth_mm,
-        scale_factor=scale_factor,
+        printer=printer,
+    ).model_dump()
+
+
+@mcp.tool()
+def scale_to_dimension(
+    file_path: str,
+    axis: str,
+    target_mm: float,
+    output_path: str | None = None,
+    printer: str = DEFAULT_PRINTER,
+) -> dict:
+    """Scale a model so the given axis (width, depth, or height) hits target_mm."""
+    return scale_to_dimension_core(
+        file_path,
+        axis=axis,
+        target_mm=target_mm,
+        output_path=output_path,
         printer=printer,
     ).model_dump()
 
