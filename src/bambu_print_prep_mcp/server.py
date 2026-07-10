@@ -142,7 +142,8 @@ def mirror_model(
     output_path: str | None = None,
     printer: str = DEFAULT_PRINTER,
 ) -> dict:
-    """Mirror a model across the plane perpendicular to width/depth/height, in place."""
+    """Mirror a model across the plane perpendicular to width/depth/height through
+    its center; writes a new derived STL (the original is untouched)."""
     return mirror_model_core(
         file_path,
         axis=axis,

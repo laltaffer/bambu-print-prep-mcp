@@ -7,12 +7,12 @@ import numpy as np
 import trimesh
 
 from bambu_print_prep_mcp.analysis import DEFAULT_PRINTER, inspect_model
-from bambu_print_prep_mcp.mesh_io import load_mesh, write_mesh
+from bambu_print_prep_mcp.mesh_io import load_mesh
 from bambu_print_prep_mcp.models import OperationResult
 from bambu_print_prep_mcp.security import resolve_output_path
-from bambu_print_prep_mcp.validation import ensure_usable_geometry
+from bambu_print_prep_mcp.transform import finish_derived
+from bambu_print_prep_mcp.validation import require_axis
 
-_AXIS_INDEX = {"width": 0, "depth": 1, "height": 2}
 _POSITION_PARAM = {0: "at_width_mm", 1: "at_depth_mm", 2: "at_height_mm"}
 _THROUGH_MARGIN_MM = 1.0
 
@@ -28,10 +28,8 @@ def punch_hole(
     output_path: str | Path | None = None,
     printer: str = DEFAULT_PRINTER,
 ) -> OperationResult:
+    axis_index = require_axis(axis)
     axis_normalized = axis.lower().strip()
-    if axis_normalized not in _AXIS_INDEX:
-        raise ValueError(f"Unknown axis '{axis}'. Use one of: width, depth, height.")
-    axis_index = _AXIS_INDEX[axis_normalized]
     if not math.isfinite(diameter_mm) or diameter_mm <= 0:
         raise ValueError("Hole diameter must be a finite value greater than zero.")
 
@@ -58,19 +56,27 @@ def punch_hole(
     minimum = mesh.bounds[0]
     sizes = mesh.bounds[1] - mesh.bounds[0]
 
-    for index in cross_indices:
-        offset = positions[index]
-        if not math.isfinite(offset) or not 0 <= offset <= float(sizes[index]):
-            raise ValueError(
-                f"Hole position {_POSITION_PARAM[index]}={offset:g} is outside the "
-                f"model's extent (0-{float(sizes[index]):g} mm from the minimum)."
-            )
+    radius = diameter_mm / 2.0
     cross_extents = [float(sizes[index]) for index in cross_indices]
     if diameter_mm >= min(cross_extents):
         raise ValueError(
             f"Hole diameter {diameter_mm:g} mm is as wide as or wider than the part "
             f"({min(cross_extents):g} mm across); nothing would remain around it."
         )
+    for index in cross_indices:
+        offset = positions[index]
+        size = float(sizes[index])
+        if not math.isfinite(offset) or not 0 <= offset <= size:
+            raise ValueError(
+                f"Hole position {_POSITION_PARAM[index]}={offset:g} is outside the "
+                f"model's extent (0-{size:g} mm from the minimum)."
+            )
+        if offset < radius or offset > size - radius:
+            raise ValueError(
+                f"Hole position {_POSITION_PARAM[index]}={offset:g} is too close to "
+                f"the edge for a {diameter_mm:g} mm hole; keep the center between "
+                f"{radius:g} and {size - radius:g} mm so material remains on every side."
+            )
 
     axis_size = float(sizes[axis_index])
     if hole_depth_mm is None:
@@ -89,7 +95,7 @@ def punch_hole(
         axis_maximum = float(minimum[axis_index]) + axis_size
         axis_center = axis_maximum - hole_depth_mm / 2.0 + _THROUGH_MARGIN_MM / 2.0
 
-    cylinder = trimesh.creation.cylinder(radius=diameter_mm / 2.0, height=cylinder_height)
+    cylinder = trimesh.creation.cylinder(radius=radius, height=cylinder_height)
     axis_vector = np.zeros(3)
     axis_vector[axis_index] = 1.0
     rotation = trimesh.geometry.align_vectors(np.array([0.0, 0.0, 1.0]), axis_vector)
@@ -109,12 +115,9 @@ def punch_hole(
             "Boolean subtraction failed on this mesh; run repair_model first and retry."
         ) from exc
 
-    ensure_usable_geometry(holed)
-    write_mesh(holed, chosen_output)
-    inspection = inspect_model(chosen_output, printer=printer)
-    return OperationResult(
-        input_path=str(input_path),
-        output_path=str(chosen_output),
-        inspection=inspection,
-        warnings=inspection.warnings.copy(),
-    )
+    if float(holed.volume) >= float(mesh.volume) - 1e-6:
+        raise ValueError(
+            "The hole does not intersect the model at that position — no material "
+            "would be removed. Check the at_*_mm offsets against the model's extents."
+        )
+    return finish_derived(input_path, holed, chosen_output, "_holed", printer)

@@ -76,4 +76,8 @@ def write_bytes_exclusive(path: str | Path, data: bytes) -> Path:
             output_file.write(data)
     except FileExistsError as exc:
         raise ValueError(f"Refusing to overwrite existing output file: {resolved}") from exc
+    except BaseException:
+        # The exclusive open succeeded, so the partial file is ours to remove.
+        resolved.unlink(missing_ok=True)
+        raise
     return resolved

@@ -10,9 +10,11 @@ from bambu_print_prep_mcp.analysis import DEFAULT_PRINTER, inspect_model
 from bambu_print_prep_mcp.mesh_io import load_mesh, write_mesh
 from bambu_print_prep_mcp.models import MeshInspection, PartsResult
 from bambu_print_prep_mcp.security import cleanup_on_error, resolve_output_path
-from bambu_print_prep_mcp.validation import TINY_PART_MAX_AXIS_MM, ensure_usable_geometry
-
-_AXIS_INDEX = {"width": 0, "depth": 1, "height": 2}
+from bambu_print_prep_mcp.validation import (
+    ensure_usable_geometry,
+    require_axis,
+    tiny_part_warning,
+)
 
 
 def _lay_cut_face_down(mesh: trimesh.Trimesh, inward_normal: np.ndarray) -> None:
@@ -37,11 +39,9 @@ def _write_parts(
         for index, path in enumerate(written, start=1):
             inspection = inspect_model(path, printer=printer)
             inspections.append(inspection)
-            if inspection.dimensions.max_axis_mm < TINY_PART_MAX_AXIS_MM:
-                extra_warnings.append(
-                    f"Part {index} is smaller than {TINY_PART_MAX_AXIS_MM:g} mm on every "
-                    "axis and may be stray debris rather than a real part."
-                )
+            debris_warning = tiny_part_warning(index, inspection.dimensions)
+            if debris_warning is not None:
+                extra_warnings.append(debris_warning)
     warnings = extra_warnings + [
         warning for inspection in inspections for warning in inspection.warnings
     ]
@@ -61,13 +61,11 @@ def cut_plane(
     orient_flat: bool = True,
     printer: str = DEFAULT_PRINTER,
 ) -> PartsResult:
+    index = require_axis(axis)
     axis_normalized = axis.lower().strip()
-    if axis_normalized not in _AXIS_INDEX:
-        raise ValueError(f"Unknown axis '{axis}'. Use one of: width, depth, height.")
     before = inspect_model(file_path, printer=printer)
     input_path = Path(before.file_path)
     mesh = load_mesh(input_path)
-    index = _AXIS_INDEX[axis_normalized]
     axis_minimum = float(mesh.bounds[0][index])
     axis_size = float(mesh.bounds[1][index] - mesh.bounds[0][index])
     if not math.isfinite(position_mm) or not 0 < position_mm < axis_size:
@@ -91,12 +89,13 @@ def cut_plane(
             )
         except ImportError:
             raise
-        except Exception:
+        except Exception as exc:
             half = trimesh.intersections.slice_mesh_plane(
                 mesh, plane_normal=inward_normal, plane_origin=plane_origin, cap=False
             )
             warnings.append(
-                f"Could not cap the cut face of part {part_number}; it is delivered open."
+                f"Could not cap the cut face of part {part_number} ({exc}); "
+                "it is delivered open."
             )
         ensure_usable_geometry(half)
         if orient_flat:

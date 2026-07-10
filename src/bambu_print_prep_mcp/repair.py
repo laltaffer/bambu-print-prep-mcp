@@ -8,7 +8,7 @@ import trimesh
 from bambu_print_prep_mcp.analysis import DEFAULT_PRINTER, inspect_model
 from bambu_print_prep_mcp.mesh_io import load_mesh, write_mesh
 from bambu_print_prep_mcp.models import RepairResult
-from bambu_print_prep_mcp.security import resolve_output_path
+from bambu_print_prep_mcp.security import cleanup_on_error, resolve_output_path
 from bambu_print_prep_mcp.validation import ensure_usable_geometry
 
 _REPAIR_ACTIONS = [
@@ -51,8 +51,11 @@ def repair_model(
             "(stray or degenerate geometry was removed)."
         )
 
-    written_output = write_mesh(mesh, chosen_output)
-    after = inspect_model(written_output, printer=printer)
+    written: list[Path] = []
+    with cleanup_on_error(written):
+        written.append(write_mesh(mesh, chosen_output))
+        after = inspect_model(written[0], printer=printer)
+    written_output = written[0]
     warnings.extend(after.warnings)
     if not after.is_watertight:
         warnings.append("Repair completed, but the model is still not watertight.")

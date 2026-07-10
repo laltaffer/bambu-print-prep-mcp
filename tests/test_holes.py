@@ -96,6 +96,44 @@ def test_wrong_position_parameters_for_axis_are_rejected(cube_stl: Path, tmp_pat
     assert not output.exists()
 
 
+def test_hole_missing_the_material_entirely_is_rejected(tmp_path: Path) -> None:
+    big = trimesh.creation.box(extents=(20.0, 20.0, 20.0))
+    small = trimesh.creation.box(extents=(4.0, 4.0, 4.0))
+    small.apply_translation([40.0, 0.0, 0.0])
+    two_lobes = trimesh.util.concatenate([big, small])
+    model = tmp_path / "two_lobes.stl"
+    two_lobes.export(model)
+    output = tmp_path / "holed.stl"
+
+    with pytest.raises(ValueError, match="does not intersect"):
+        punch_hole(
+            model,
+            axis="height",
+            diameter_mm=6.0,
+            at_width_mm=30.0,
+            at_depth_mm=10.0,
+            output_path=output,
+        )
+
+    assert not output.exists()
+
+
+def test_hole_too_close_to_the_edge_is_rejected(cube_stl: Path, tmp_path: Path) -> None:
+    output = tmp_path / "holed.stl"
+
+    with pytest.raises(ValueError, match="edge"):
+        punch_hole(
+            cube_stl,
+            axis="height",
+            diameter_mm=6.0,
+            at_width_mm=1.0,
+            at_depth_mm=15.0,
+            output_path=output,
+        )
+
+    assert not output.exists()
+
+
 def test_non_watertight_input_is_blocked_with_repair_guidance(
     cube_stl: Path, tmp_path: Path
 ) -> None:

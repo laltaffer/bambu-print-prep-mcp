@@ -17,8 +17,6 @@ def load_mesh(file_path: str | Path) -> trimesh.Trimesh:
 
 
 def write_mesh(mesh: trimesh.Trimesh, output_path: str | Path) -> Path:
-    path = Path(output_path)
-    file_type = path.suffix.lower().lstrip(".") or "stl"
-    exported = mesh.export(file_type=file_type)
+    exported = mesh.export(file_type="stl")
     data = exported.encode("utf-8") if isinstance(exported, str) else bytes(exported)
-    return write_bytes_exclusive(path, data)
+    return write_bytes_exclusive(Path(output_path), data)

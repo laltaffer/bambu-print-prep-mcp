@@ -130,6 +130,43 @@ def test_core_error_surfaces_through_tool(cube_stl: Path, tmp_path: Path) -> Non
         )
 
 
+def test_mirror_and_rotate_tools_end_to_end(cube_stl: Path, tmp_path: Path) -> None:
+    mirrored = call_tool(
+        "mirror_model",
+        {"file_path": str(cube_stl), "axis": "width", "output_path": str(tmp_path / "m.stl")},
+    )
+    rotated = call_tool(
+        "rotate_model",
+        {
+            "file_path": str(cube_stl),
+            "axis": "width",
+            "degrees": 90.0,
+            "output_path": str(tmp_path / "r.stl"),
+        },
+    )
+
+    assert Path(mirrored["output_path"]).exists()
+    assert mirrored["inspection"]["is_watertight"] is True
+    assert rotated["inspection"]["dimensions"]["height_mm"] == 30.0
+
+
+def test_split_parts_tool_end_to_end(tmp_path: Path) -> None:
+    import trimesh
+
+    big = trimesh.creation.box(extents=(20.0, 20.0, 20.0))
+    small = trimesh.creation.box(extents=(5.0, 5.0, 5.0))
+    small.apply_translation([40.0, 0.0, 0.0])
+    model = tmp_path / "two.stl"
+    trimesh.util.concatenate([big, small]).export(model)
+
+    data = call_tool(
+        "split_parts", {"file_path": str(model), "output_dir": str(tmp_path / "out")}
+    )
+
+    assert len(data["output_paths"]) == 2
+    assert all(Path(path).exists() for path in data["output_paths"])
+
+
 def test_inspect_model_tool_end_to_end(cube_stl: Path) -> None:
     data = call_tool("inspect_model", {"file_path": str(cube_stl)})
 

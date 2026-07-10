@@ -9,6 +9,24 @@ WRONG_UNITS_LARGE_FACTOR = 10.0
 IMPLAUSIBLY_SMALL_MAX_AXIS_MM = 5.0
 TINY_PART_MAX_AXIS_MM = 2.0
 
+AXES = ("width", "depth", "height")
+
+
+def require_axis(axis: str) -> int:
+    axis_normalized = axis.lower().strip()
+    if axis_normalized not in AXES:
+        raise ValueError(f"Unknown axis '{axis}'. Use one of: width, depth, height.")
+    return AXES.index(axis_normalized)
+
+
+def tiny_part_warning(part_number: int, dimensions: Dimensions) -> str | None:
+    if dimensions.max_axis_mm >= TINY_PART_MAX_AXIS_MM:
+        return None
+    return (
+        f"Part {part_number} is smaller than {TINY_PART_MAX_AXIS_MM:g} mm on every "
+        "axis and may be stray debris rather than a real part."
+    )
+
 
 def ensure_usable_geometry(mesh: trimesh.Trimesh) -> None:
     bounds = mesh.bounds
