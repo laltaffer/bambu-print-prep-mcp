@@ -4,6 +4,8 @@ from mcp.server.fastmcp import FastMCP
 
 from bambu_print_prep_mcp.analysis import DEFAULT_PRINTER
 from bambu_print_prep_mcp.analysis import inspect_model as inspect_model_core
+from bambu_print_prep_mcp.cut import cut_plane as cut_plane_core
+from bambu_print_prep_mcp.cut import split_parts as split_parts_core
 from bambu_print_prep_mcp.repair import repair_model as repair_model_core
 from bambu_print_prep_mcp.transform import scale_by_factor as scale_by_factor_core
 from bambu_print_prep_mcp.transform import scale_to_dimension as scale_to_dimension_core
@@ -27,6 +29,42 @@ def repair_model(
     return repair_model_core(
         file_path,
         output_path=output_path,
+        printer=printer,
+    ).model_dump()
+
+
+@mcp.tool()
+def cut_plane(
+    file_path: str,
+    axis: str,
+    position_mm: float,
+    output_dir: str | None = None,
+    orient_flat: bool = True,
+    printer: str = DEFAULT_PRINTER,
+) -> dict:
+    """Cut a model in two along width/depth/height at position_mm from the model's
+    minimum, capping both cut faces; each part is written as its own STL, laid
+    cut-face-down unless orient_flat is false."""
+    return cut_plane_core(
+        file_path,
+        axis=axis,
+        position_mm=position_mm,
+        output_dir=output_dir,
+        orient_flat=orient_flat,
+        printer=printer,
+    ).model_dump()
+
+
+@mcp.tool()
+def split_parts(
+    file_path: str,
+    output_dir: str | None = None,
+    printer: str = DEFAULT_PRINTER,
+) -> dict:
+    """Split a multi-part model into its connected components, one STL per part."""
+    return split_parts_core(
+        file_path,
+        output_dir=output_dir,
         printer=printer,
     ).model_dump()
 

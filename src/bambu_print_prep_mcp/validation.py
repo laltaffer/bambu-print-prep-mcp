@@ -7,6 +7,7 @@ from bambu_print_prep_mcp.models import Dimensions, PrinterProfile
 
 WRONG_UNITS_LARGE_FACTOR = 10.0
 IMPLAUSIBLY_SMALL_MAX_AXIS_MM = 5.0
+TINY_PART_MAX_AXIS_MM = 2.0
 
 
 def ensure_usable_geometry(mesh: trimesh.Trimesh) -> None:

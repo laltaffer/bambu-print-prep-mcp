@@ -41,6 +41,13 @@ class RepairResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class PartsResult(BaseModel):
+    input_path: str
+    output_paths: list[str]
+    parts: list[MeshInspection]
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ScaleResult(BaseModel):
     input_path: str
     output_path: str

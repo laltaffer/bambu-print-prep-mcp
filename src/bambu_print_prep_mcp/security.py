@@ -1,8 +1,21 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 SUPPORTED_INPUT_SUFFIXES = (".stl", ".3mf")
+
+
+@contextmanager
+def cleanup_on_error(written_paths: list[Path]) -> Iterator[list[Path]]:
+    """Remove every path appended to written_paths if the block raises."""
+    try:
+        yield written_paths
+    except BaseException:
+        for path in reversed(written_paths):
+            path.unlink(missing_ok=True)
+        raise
 
 
 def ensure_supported_input(file_path: str | Path) -> Path:

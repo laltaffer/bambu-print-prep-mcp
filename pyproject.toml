@@ -18,6 +18,8 @@ dependencies = [
   "networkx>=3.0",
   "numpy>=1.26",
   "pydantic>=2.7",
+  "scipy>=1.11",
+  "shapely>=2.0",
   "trimesh>=4.4",
 ]
 

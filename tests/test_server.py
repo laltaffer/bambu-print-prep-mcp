@@ -22,9 +22,33 @@ def test_tool_surface_names() -> None:
     names = set(list_tool_schemas())
     assert "scale_by_factor" in names
     assert "scale_to_dimension" in names
+    assert "cut_plane" in names
+    assert "split_parts" in names
     assert "inspect_model" in names
     assert "repair_model" in names
     assert "normalize_scale" not in names
+
+
+def test_cut_plane_tool_declares_required_parameters() -> None:
+    schemas = list_tool_schemas()
+    assert set(schemas["cut_plane"]["required"]) == {"file_path", "axis", "position_mm"}
+    assert set(schemas["split_parts"]["required"]) == {"file_path"}
+
+
+def test_cut_plane_tool_end_to_end(cube_stl: Path, tmp_path: Path) -> None:
+    data = call_tool(
+        "cut_plane",
+        {
+            "file_path": str(cube_stl),
+            "axis": "height",
+            "position_mm": 20.0,
+            "output_dir": str(tmp_path / "out"),
+        },
+    )
+
+    assert len(data["output_paths"]) == 2
+    assert all(Path(path).exists() for path in data["output_paths"])
+    assert all(part["is_watertight"] for part in data["parts"])
 
 
 def test_scale_tools_declare_required_parameters() -> None:
