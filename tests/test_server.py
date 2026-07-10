@@ -24,6 +24,8 @@ def test_tool_surface_names() -> None:
     assert "scale_to_dimension" in names
     assert "cut_plane" in names
     assert "split_parts" in names
+    assert "mirror_model" in names
+    assert "rotate_model" in names
     assert "inspect_model" in names
     assert "repair_model" in names
     assert "normalize_scale" not in names
@@ -33,6 +35,8 @@ def test_cut_plane_tool_declares_required_parameters() -> None:
     schemas = list_tool_schemas()
     assert set(schemas["cut_plane"]["required"]) == {"file_path", "axis", "position_mm"}
     assert set(schemas["split_parts"]["required"]) == {"file_path"}
+    assert set(schemas["mirror_model"]["required"]) == {"file_path", "axis"}
+    assert set(schemas["rotate_model"]["required"]) == {"file_path", "axis", "degrees"}
 
 
 def test_cut_plane_tool_end_to_end(cube_stl: Path, tmp_path: Path) -> None:

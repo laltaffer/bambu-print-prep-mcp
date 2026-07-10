@@ -7,6 +7,8 @@ from bambu_print_prep_mcp.analysis import inspect_model as inspect_model_core
 from bambu_print_prep_mcp.cut import cut_plane as cut_plane_core
 from bambu_print_prep_mcp.cut import split_parts as split_parts_core
 from bambu_print_prep_mcp.repair import repair_model as repair_model_core
+from bambu_print_prep_mcp.transform import mirror_model as mirror_model_core
+from bambu_print_prep_mcp.transform import rotate_model as rotate_model_core
 from bambu_print_prep_mcp.transform import scale_by_factor as scale_by_factor_core
 from bambu_print_prep_mcp.transform import scale_to_dimension as scale_to_dimension_core
 
@@ -98,6 +100,41 @@ def scale_to_dimension(
         file_path,
         axis=axis,
         target_mm=target_mm,
+        output_path=output_path,
+        printer=printer,
+    ).model_dump()
+
+
+@mcp.tool()
+def mirror_model(
+    file_path: str,
+    axis: str,
+    output_path: str | None = None,
+    printer: str = DEFAULT_PRINTER,
+) -> dict:
+    """Mirror a model across the plane perpendicular to width/depth/height, in place."""
+    return mirror_model_core(
+        file_path,
+        axis=axis,
+        output_path=output_path,
+        printer=printer,
+    ).model_dump()
+
+
+@mcp.tool()
+def rotate_model(
+    file_path: str,
+    axis: str,
+    degrees: float,
+    output_path: str | None = None,
+    printer: str = DEFAULT_PRINTER,
+) -> dict:
+    """Rotate a model around the width/depth/height axis through its center by
+    degrees, then rest it on the bed (min height at zero)."""
+    return rotate_model_core(
+        file_path,
+        axis=axis,
+        degrees=degrees,
         output_path=output_path,
         printer=printer,
     ).model_dump()
