@@ -41,7 +41,6 @@ def test_cut_plane_tool_declares_required_parameters() -> None:
     assert set(schemas["rotate_model"]["required"]) == {"file_path", "axis", "degrees"}
     assert set(schemas["punch_hole"]["required"]) == {"file_path", "axis", "diameter_mm"}
     assert set(schemas["open_in_bambu_studio"]["required"]) == {"file_paths"}
-    assert "replace" in schemas["open_in_bambu_studio"]["properties"]
 
 
 def test_punch_hole_tool_end_to_end(cube_stl: Path, tmp_path: Path) -> None:

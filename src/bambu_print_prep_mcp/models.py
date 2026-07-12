@@ -44,7 +44,6 @@ class RepairResult(BaseModel):
 class HandoffResult(BaseModel):
     opened_paths: list[str]
     application: str = "Bambu Studio"
-    replaced: bool = False
 
 
 class OperationResult(BaseModel):

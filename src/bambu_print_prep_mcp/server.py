@@ -172,13 +172,10 @@ def rotate_model(
 
 
 @mcp.tool()
-def open_in_bambu_studio(file_paths: list[str], replace: bool = False) -> dict:
+def open_in_bambu_studio(file_paths: list[str]) -> dict:
     """Open one or more model files (STL or 3MF) in Bambu Studio on this Mac,
-    ready to slice and print. By default the files are added to the current
-    Studio session. Set replace=true to gracefully quit a running Studio and
-    relaunch with only these files on a clean plate (Studio will prompt to save
-    any unsaved work first)."""
-    return open_in_bambu_studio_core(file_paths, replace=replace).model_dump()
+    ready to slice and print."""
+    return open_in_bambu_studio_core(file_paths).model_dump()
 
 
 def main() -> None:
