@@ -6,60 +6,103 @@ import pytest
 from bambu_print_prep_mcp.handoff import open_in_bambu_studio
 
 
-class FakeLauncher:
-    def __init__(self, fail: bool = False) -> None:
-        self.commands: list[list[str]] = []
-        self.fail = fail
+class FakeStudio:
+    """Fake StudioLauncher recording the sequence of control actions."""
 
-    def __call__(self, command: list[str]) -> None:
-        self.commands.append(command)
-        if self.fail:
-            raise subprocess.CalledProcessError(1, command)
+    def __init__(self, running: bool = False, open_fails: bool = False,
+                 quit_hangs: bool = False) -> None:
+        self._running = running
+        self.open_fails = open_fails
+        self.quit_hangs = quit_hangs
+        self.events: list[tuple] = []
+
+    def is_running(self) -> bool:
+        return self._running
+
+    def quit(self) -> None:
+        self.events.append(("quit",))
+        if not self.quit_hangs:
+            self._running = False
+
+    def open(self, paths: list[str]) -> None:
+        self.events.append(("open", list(paths)))
+        if self.open_fails:
+            raise subprocess.CalledProcessError(1, ["open"])
+        self._running = True
 
 
-def test_opens_multiple_files_in_one_launch(cube_stl: Path, cube_3mf: Path) -> None:
-    launcher = FakeLauncher()
+def _open(*args, launcher, **kwargs):
+    return open_in_bambu_studio(*args, launcher=launcher, sleeper=lambda _s: None, **kwargs)
 
-    result = open_in_bambu_studio([cube_stl, cube_3mf], launcher=launcher)
 
-    assert len(launcher.commands) == 1
-    command = launcher.commands[0]
-    assert command[:3] == ["open", "-a", "BambuStudio"]
-    assert command[3:] == [str(cube_stl.resolve()), str(cube_3mf.resolve())]
+def test_append_mode_opens_without_quitting(cube_stl: Path, cube_3mf: Path) -> None:
+    studio = FakeStudio(running=True)
+
+    result = _open([cube_stl, cube_3mf], launcher=studio)
+
+    assert studio.events == [("open", [str(cube_stl.resolve()), str(cube_3mf.resolve())])]
+    assert result.replaced is False
     assert result.opened_paths == [str(cube_stl.resolve()), str(cube_3mf.resolve())]
 
 
+def test_replace_mode_quits_running_studio_then_opens(cube_stl: Path) -> None:
+    studio = FakeStudio(running=True)
+
+    result = _open([cube_stl], launcher=studio, replace=True)
+
+    assert studio.events == [("quit",), ("open", [str(cube_stl.resolve())])]
+    assert result.replaced is True
+
+
+def test_replace_mode_skips_quit_when_studio_not_running(cube_stl: Path) -> None:
+    studio = FakeStudio(running=False)
+
+    _open([cube_stl], launcher=studio, replace=True)
+
+    assert studio.events == [("open", [str(cube_stl.resolve())])]
+
+
+def test_replace_still_opens_if_quit_stalls_on_unsaved_work(cube_stl: Path) -> None:
+    studio = FakeStudio(running=True, quit_hangs=True)
+
+    result = _open([cube_stl], launcher=studio, replace=True)
+
+    assert ("quit",) in studio.events
+    assert ("open", [str(cube_stl.resolve())]) in studio.events
+    assert result.replaced is True
+
+
 def test_missing_file_is_rejected_without_launching(tmp_path: Path) -> None:
-    launcher = FakeLauncher()
+    studio = FakeStudio()
 
     with pytest.raises(FileNotFoundError):
-        open_in_bambu_studio([tmp_path / "ghost.stl"], launcher=launcher)
+        _open([tmp_path / "ghost.stl"], launcher=studio)
 
-    assert launcher.commands == []
+    assert studio.events == []
 
 
 def test_unsupported_extension_is_rejected_without_launching(tmp_path: Path) -> None:
-    launcher = FakeLauncher()
+    studio = FakeStudio()
     obj_file = tmp_path / "model.obj"
     obj_file.write_text("not a model", encoding="utf-8")
 
     with pytest.raises(ValueError, match="Only STL and 3MF"):
-        open_in_bambu_studio([obj_file], launcher=launcher)
+        _open([obj_file], launcher=studio)
 
-    assert launcher.commands == []
+    assert studio.events == []
 
 
 def test_failed_launch_is_a_clear_error(cube_stl: Path) -> None:
-    launcher = FakeLauncher(fail=True)
+    studio = FakeStudio(open_fails=True)
 
     with pytest.raises(ValueError, match="Bambu Studio"):
-        open_in_bambu_studio([cube_stl], launcher=launcher)
+        _open([cube_stl], launcher=studio)
 
 
 def test_empty_file_list_is_rejected() -> None:
-    launcher = FakeLauncher()
+    studio = FakeStudio()
 
     with pytest.raises(ValueError, match="at least one"):
-        open_in_bambu_studio([], launcher=launcher)
+        _open([], launcher=studio)
 
-    assert launcher.commands == []
+    assert studio.events == []
