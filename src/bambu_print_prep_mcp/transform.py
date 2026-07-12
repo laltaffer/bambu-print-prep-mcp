@@ -3,97 +3,143 @@ from __future__ import annotations
 import math
 from pathlib import Path
 
-from bambu_print_prep_mcp.analysis import fits_build_volume, inspect_model, load_printer_profile
+import numpy as np
+import trimesh
+
+from bambu_print_prep_mcp.analysis import DEFAULT_PRINTER, inspect_model, load_printer_profile
 from bambu_print_prep_mcp.mesh_io import load_mesh, write_mesh
-from bambu_print_prep_mcp.models import ScaleResult
-from bambu_print_prep_mcp.security import refuse_overwrite_input, safe_output_path
+from bambu_print_prep_mcp.models import MeshInspection, OperationResult, ScaleResult
+from bambu_print_prep_mcp.security import cleanup_on_error, resolve_output_path
+from bambu_print_prep_mcp.validation import (
+    AXES,
+    ensure_usable_geometry,
+    fits_build_volume,
+    require_axis,
+)
 
-_INVALID_SCALE_MESSAGE = "Scale factor must be a finite value greater than zero."
-
-
-def _refuse_existing_output(output_path: Path) -> None:
-    if output_path.exists():
-        raise ValueError(f"Refusing to overwrite existing output file: {output_path}")
-
-
-def _scale_to_target(source_dimension: float, target_dimension: float, axis_name: str) -> float:
-    if source_dimension <= 0:
-        raise ValueError(f"Source {axis_name} must be greater than zero to scale by target.")
-    return target_dimension / source_dimension
+MIN_RESULT_MAX_AXIS_MM = 0.01
+MAX_RESULT_MAX_AXIS_MM = 100_000.0
 
 
-def _chosen_scale_factor(
-    current_width: float,
-    current_depth: float,
-    current_height: float,
-    target_width_mm: float | None,
-    target_depth_mm: float | None,
-    target_height_mm: float | None,
-    scale_factor: float | None,
-) -> float:
-    provided = [
-        target_width_mm is not None,
-        target_depth_mm is not None,
-        target_height_mm is not None,
-        scale_factor is not None,
-    ]
-    if sum(provided) != 1:
-        raise ValueError(
-            "Provide exactly one of target_width_mm, target_depth_mm, "
-            "target_height_mm, or scale_factor."
-        )
-    if target_width_mm is not None:
-        return _scale_to_target(current_width, target_width_mm, "width")
-    if target_depth_mm is not None:
-        return _scale_to_target(current_depth, target_depth_mm, "depth")
-    if target_height_mm is not None:
-        return _scale_to_target(current_height, target_height_mm, "height")
-    assert scale_factor is not None
-    return scale_factor
+def finish_derived(
+    input_path: Path,
+    mesh: trimesh.Trimesh,
+    output_path: str | Path | None,
+    suffix: str,
+    printer: str,
+) -> OperationResult:
+    chosen_output = resolve_output_path(input_path, output_path, None, suffix)
+    ensure_usable_geometry(mesh)
+    written: list[Path] = []
+    with cleanup_on_error(written):
+        written.append(write_mesh(mesh, chosen_output))
+        inspection = inspect_model(chosen_output, printer=printer)
+    return OperationResult(
+        input_path=str(input_path),
+        output_path=str(chosen_output),
+        inspection=inspection,
+        warnings=inspection.warnings.copy(),
+    )
 
 
-def normalize_scale(
+def mirror_model(
     file_path: str | Path,
+    axis: str,
     output_path: str | Path | None = None,
-    output_dir: str | Path | None = None,
-    target_height_mm: float | None = None,
-    target_width_mm: float | None = None,
-    target_depth_mm: float | None = None,
-    scale_factor: float | None = None,
-    printer: str = "bambu_lab_p2s",
-) -> ScaleResult:
+    printer: str = DEFAULT_PRINTER,
+) -> OperationResult:
+    index = require_axis(axis)
     before = inspect_model(file_path, printer=printer)
     input_path = Path(before.file_path)
-    chosen_output = (
-        Path(output_path).expanduser().resolve()
-        if output_path is not None
-        else safe_output_path(input_path, output_dir, "_scaled", ".stl")
-    )
-    refuse_overwrite_input(input_path, chosen_output)
-    _refuse_existing_output(chosen_output)
-    factor = _chosen_scale_factor(
-        before.dimensions.width_mm,
-        before.dimensions.depth_mm,
-        before.dimensions.height_mm,
-        target_width_mm,
-        target_depth_mm,
-        target_height_mm,
-        scale_factor,
-    )
+    mesh = load_mesh(input_path)
+    center = float(mesh.bounds.mean(axis=0)[index])
+    reflection = np.eye(4)
+    reflection[index, index] = -1.0
+    reflection[index, 3] = 2.0 * center
+    mesh.apply_transform(reflection)
+    return finish_derived(input_path, mesh, output_path, "_mirrored", printer)
+
+
+def rotate_model(
+    file_path: str | Path,
+    axis: str,
+    degrees: float,
+    output_path: str | Path | None = None,
+    printer: str = DEFAULT_PRINTER,
+) -> OperationResult:
+    index = require_axis(axis)
+    if not math.isfinite(degrees):
+        raise ValueError("Rotation degrees must be a finite number.")
+    before = inspect_model(file_path, printer=printer)
+    input_path = Path(before.file_path)
+    mesh = load_mesh(input_path)
+    direction = np.zeros(3)
+    direction[index] = 1.0
+    center = mesh.bounds.mean(axis=0)
+    matrix = trimesh.transformations.rotation_matrix(math.radians(degrees), direction, center)
+    mesh.apply_transform(matrix)
+    mesh.apply_translation([0.0, 0.0, -float(mesh.bounds[0][2])])
+    return finish_derived(input_path, mesh, output_path, "_rotated", printer)
+
+
+def _apply_scale(
+    before: MeshInspection,
+    factor: float,
+    output_path: str | Path | None,
+    printer: str,
+) -> ScaleResult:
     if not math.isfinite(factor) or factor <= 0:
-        raise ValueError(_INVALID_SCALE_MESSAGE)
+        raise ValueError("Scale factor must be a finite value greater than zero.")
+    input_path = Path(before.file_path)
+    chosen_output = resolve_output_path(input_path, output_path, None, "_scaled")
+    resulting_max = before.dimensions.max_axis_mm * factor
+    if not MIN_RESULT_MAX_AXIS_MM <= resulting_max <= MAX_RESULT_MAX_AXIS_MM:
+        raise ValueError(
+            f"Scaling by {factor:g} would make the model's largest dimension "
+            f"{resulting_max:g} mm; refusing implausible results outside "
+            f"{MIN_RESULT_MAX_AXIS_MM:g}-{MAX_RESULT_MAX_AXIS_MM:g} mm."
+        )
     mesh = load_mesh(input_path)
     mesh.apply_scale(factor)
-    write_mesh(mesh, chosen_output)
-    after = inspect_model(chosen_output, printer=printer)
+    ensure_usable_geometry(mesh)
+    written: list[Path] = []
+    with cleanup_on_error(written):
+        written.append(write_mesh(mesh, chosen_output))
+        after = inspect_model(chosen_output, printer=printer)
     profile = load_printer_profile(printer)
-    warnings = after.warnings.copy()
     return ScaleResult(
         input_path=str(input_path),
         output_path=str(chosen_output),
         original_dimensions=before.dimensions,
         new_dimensions=after.dimensions,
-        scale_factor=round(float(factor), 6),
+        scale_factor=float(factor),
         fits_build_volume=fits_build_volume(after.dimensions, profile),
-        warnings=warnings,
+        warnings=after.warnings.copy(),
     )
+
+
+def scale_by_factor(
+    file_path: str | Path,
+    factor: float,
+    output_path: str | Path | None = None,
+    printer: str = DEFAULT_PRINTER,
+) -> ScaleResult:
+    before = inspect_model(file_path, printer=printer)
+    return _apply_scale(before, factor, output_path, printer)
+
+
+def scale_to_dimension(
+    file_path: str | Path,
+    axis: str,
+    target_mm: float,
+    output_path: str | Path | None = None,
+    printer: str = DEFAULT_PRINTER,
+) -> ScaleResult:
+    axis_name = AXES[require_axis(axis)]
+    if not math.isfinite(target_mm) or target_mm <= 0:
+        raise ValueError("Target dimension must be a finite value greater than zero.")
+    before = inspect_model(file_path, printer=printer)
+    source = getattr(before.dimensions, f"{axis_name}_mm")
+    if source <= 0:
+        raise ValueError(f"Source {axis_name} must be greater than zero to scale by target.")
+    return _apply_scale(before, target_mm / source, output_path, printer)

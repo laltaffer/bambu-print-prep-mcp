@@ -1,6 +1,6 @@
 # Agent Instructions
 
-This repository builds a local-first MCP server for preparing STL files for Bambu Studio.
+This repository builds a local-first MCP server that lets AI assistants modify 3D models (STL/3MF) and hand them to Bambu Studio on macOS.
 
 ## Privacy Rules
 

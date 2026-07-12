@@ -5,16 +5,21 @@ build-backend = "hatchling.build"
 [project]
 name = "bambu-print-prep-mcp"
 version = "0.1.0"
-description = "Local-first MCP server for preparing STL files for Bambu Studio."
+description = "Local-first MCP server for modifying 3D models and handing them to Bambu Studio."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "Bambu Print Prep MCP Contributors" }]
 dependencies = [
+  "lxml>=5.0",
+  "manifold3d>=2.5",
+  "mapbox_earcut>=1.0",
   "mcp[cli]>=1.27,<2",
   "networkx>=3.0",
   "numpy>=1.26",
   "pydantic>=2.7",
+  "scipy>=1.11",
+  "shapely>=2.0",
   "trimesh>=4.4",
 ]
 

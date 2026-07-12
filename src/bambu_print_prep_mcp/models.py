@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from pydantic import BaseModel, Field
 
 
@@ -9,9 +7,6 @@ class Dimensions(BaseModel):
     width_mm: float = Field(ge=0, allow_inf_nan=False)
     depth_mm: float = Field(ge=0, allow_inf_nan=False)
     height_mm: float = Field(ge=0, allow_inf_nan=False)
-
-    def as_tuple(self) -> tuple[float, float, float]:
-        return (self.width_mm, self.depth_mm, self.height_mm)
 
     @property
     def max_axis_mm(self) -> float:
@@ -46,6 +41,25 @@ class RepairResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
+class HandoffResult(BaseModel):
+    opened_paths: list[str]
+    application: str = "Bambu Studio"
+
+
+class OperationResult(BaseModel):
+    input_path: str
+    output_path: str
+    inspection: MeshInspection
+    warnings: list[str] = Field(default_factory=list)
+
+
+class PartsResult(BaseModel):
+    input_path: str
+    output_paths: list[str]
+    parts: list[MeshInspection]
+    warnings: list[str] = Field(default_factory=list)
+
+
 class ScaleResult(BaseModel):
     input_path: str
     output_path: str
@@ -56,35 +70,3 @@ class ScaleResult(BaseModel):
     warnings: list[str] = Field(default_factory=list)
 
 
-class PrintSettingsRecommendation(BaseModel):
-    printer: str
-    material: str
-    intent: str
-    layer_height_mm: float = Field(gt=0, le=1.0, allow_inf_nan=False)
-    support_type: str
-    support_style: str
-    support_placement: str
-    threshold_angle_degrees: int = Field(ge=0, le=90)
-    top_z_distance_mm: float = Field(ge=0, le=2.0, allow_inf_nan=False)
-    top_interface_layers: int = Field(ge=0, le=20)
-    brim_enabled: bool
-    brim_width_mm: float = Field(ge=0, le=50.0, allow_inf_nan=False)
-    wall_loops: int = Field(ge=0, le=20)
-    infill_percent: int = Field(ge=0, le=100)
-    notes: list[str]
-    bambu_studio_steps: list[str]
-
-
-class PrepareResult(BaseModel):
-    input_path: str
-    final_model_path: str
-    markdown_report_path: str
-    json_report_path: str
-    initial_inspection: MeshInspection
-    final_inspection: MeshInspection
-    recommendation: PrintSettingsRecommendation
-    warnings: list[str] = Field(default_factory=list)
-
-
-def path_to_public_string(path: Path) -> str:
-    return str(path.expanduser().resolve())
