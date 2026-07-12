@@ -90,6 +90,21 @@ def test_cut_plane_on_open_mesh_delivers_with_warnings(cube_stl: Path, tmp_path:
     assert any("watertight" in warning for warning in result.warnings)
 
 
+def test_cut_plane_caps_hollow_cross_sections(tmp_path: Path) -> None:
+    """A tube's cut face is an annulus (nested polygons) — the case real models hit."""
+    tube = trimesh.creation.annulus(r_min=6.0, r_max=10.0, height=30.0)
+    model = tmp_path / "tube.stl"
+    tube.export(model)
+
+    result = cut_plane(model, axis="height", position_mm=15.0, output_dir=tmp_path / "out")
+
+    assert len(result.output_paths) == 2
+    for path, inspection in zip(result.output_paths, result.parts, strict=True):
+        assert Path(path).exists()
+        assert inspection.is_watertight is True
+    assert not any("Could not cap" in warning for warning in result.warnings)
+
+
 def test_split_parts_writes_one_file_per_component(two_part_stl: Path, tmp_path: Path) -> None:
     result = split_parts(two_part_stl, output_dir=tmp_path / "out")
 
