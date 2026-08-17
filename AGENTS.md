@@ -14,3 +14,13 @@ This repository builds a local-first MCP server that lets AI assistants modify 3
 - Prefer small, testable modules under `src/bambu_print_prep_mcp`.
 - Keep MCP tool wrappers thin; put business logic in core services.
 - Run tests, linting, and secret scanning before publishing.
+
+## Pre-Publish Checklist
+
+Before pushing publicly:
+
+- Run `git status --short` and review every tracked file.
+- Search tracked source files for local machine paths, personal identifiers, credentials, and generated-file metadata.
+- Run `detect-secrets-hook --baseline .secrets.baseline $(git ls-files)` and confirm it exits 0.
+- Confirm no personal model files, screenshots, printer identifiers, or local paths are staged.
+- Confirm generated outputs remain under ignored directories such as `outputs/`.

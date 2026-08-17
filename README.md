@@ -57,16 +57,9 @@ bambu-print-prep inspect /path/to/model.stl
 
 ## Privacy
 
-Do not commit personal STL files, screenshots, printer serials, access codes,
-Bambu account data, or local absolute paths. Generated output belongs in
-`outputs/` directories, which are ignored by git.
+Everything runs on your machine. The server does not connect to Bambu cloud, upload
+models, store printer credentials, or send print jobs. Originals are never modified:
+every operation writes new files and refuses to overwrite.
 
-## Public Repository Safety Checklist
-
-Before pushing publicly:
-
-- Run `git status --short` and review every tracked file.
-- Search tracked source files for local machine paths, personal identifiers, credentials, and generated-file metadata.
-- Run `detect-secrets-hook --baseline .secrets.baseline $(git ls-files)` and confirm it exits 0.
-- Confirm no personal model files, screenshots, printer identifiers, or local paths are staged.
-- Confirm generated outputs remain under ignored directories such as `outputs/`.
+Contributing: [SECURITY.md](SECURITY.md) covers what must never be committed, and
+[AGENTS.md](AGENTS.md) has the pre-publish checklist.
