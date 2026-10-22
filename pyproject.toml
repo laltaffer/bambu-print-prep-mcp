@@ -13,7 +13,8 @@ authors = [{ name = "Bambu Print Prep MCP Contributors" }]
 dependencies = [
   "lxml>=5.0",
   "manifold3d>=2.5",
-  "mapbox_earcut>=1.0",
+  # earcut 2.1 produces non-watertight annular cut caps (test_cut_plane_caps_hollow_cross_sections).
+  "mapbox_earcut>=1.0,<2.1",
   "mcp[cli]>=1.30,<2",
   "networkx>=3.0",
   "numpy>=1.26",
