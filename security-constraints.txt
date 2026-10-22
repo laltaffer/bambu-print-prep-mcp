@@ -1,0 +1,7 @@
+# Minimum patched versions for installed SDK and development dependencies.
+# Constraints do not add packages that the project does not otherwise need.
+PyJWT>=2.15.1
+anyio>=4.14.2
+certifi>=2026.10.19
+cryptography>=50.0.0
+urllib3>=2.8.0

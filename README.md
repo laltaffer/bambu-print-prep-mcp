@@ -34,7 +34,7 @@ the bed, suspiciously tiny parts) are delivered with warnings.
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -c security-constraints.txt -e ".[dev]"
 ```
 
 ## MCP Server
