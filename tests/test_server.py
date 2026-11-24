@@ -30,6 +30,10 @@ def test_tool_surface_names() -> None:
     assert "open_in_bambu_studio" in names
     assert "inspect_model" in names
     assert "repair_model" in names
+    assert "prepare_print" in names
+    assert "open_in_bambu_connect" in names
+    assert "prepare_connect_print" in names
+    assert "send_connect_print" in names
     assert "normalize_scale" not in names
 
 
@@ -41,6 +45,83 @@ def test_cut_plane_tool_declares_required_parameters() -> None:
     assert set(schemas["rotate_model"]["required"]) == {"file_path", "axis", "degrees"}
     assert set(schemas["punch_hole"]["required"]) == {"file_path", "axis", "diameter_mm"}
     assert set(schemas["open_in_bambu_studio"]["required"]) == {"file_paths"}
+    assert set(schemas["prepare_print"]["required"]) == {"file_path"}
+    assert set(schemas["open_in_bambu_connect"]["required"]) == {"file_path", "reviewed_sha256"}
+
+
+def test_connect_tools_end_to_end(tmp_path: Path, monkeypatch) -> None:
+    from zipfile import ZipFile
+
+    from bambu_print_prep_mcp import connect
+
+    path = tmp_path / "cube.gcode.3mf"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("Metadata/plate_1.gcode", "; synthetic test\nG28\n")
+    commands = []
+    monkeypatch.setattr(connect, "_launch", commands.append)
+    job = call_tool("prepare_print", {"file_path": str(path)})
+    result = call_tool(
+        "open_in_bambu_connect", {"file_path": str(path), "reviewed_sha256": job["sha256"]}
+    )
+    assert result["print_submitted"] is False
+    assert result["status"] == "handoff_requested"
+    assert len(commands) == 1
+    with pytest.raises(ToolError, match="changed since review"):
+        call_tool("open_in_bambu_connect", {"file_path": str(path), "reviewed_sha256": "0" * 64})
+    assert len(commands) == 1
+
+
+def test_submission_tools_bind_review_and_require_approval(tmp_path: Path, monkeypatch) -> None:
+    from zipfile import ZipFile
+
+    from bambu_print_prep_mcp import submission
+    from bambu_print_prep_mcp.submission import SubmissionService
+
+    settings = {
+        "printer": "Test P2S",
+        "material": "PLA",
+        "ams_slot": "A2",
+        "timelapse": "Off",
+        "bed_leveling": "Auto",
+        "flow_calibration": "Auto",
+    }
+    calls = []
+
+    class UI:
+        def call(self, action, **args):
+            calls.append(action)
+            return (
+                {"review": settings, "plate_info": "P2S / PEI / PLA / 0.4"}
+                if action == "stage"
+                else {"status": "job_accepted", "send_attempted": True}
+            )
+
+    service = SubmissionService(tmp_path / "reviews", UI())
+    monkeypatch.setattr(submission, "SubmissionService", lambda: service)
+    monkeypatch.setattr(submission, "open_in_bambu_connect", lambda *a: None)
+    path = tmp_path / "cube.gcode.3mf"
+    with ZipFile(path, "w") as archive:
+        archive.writestr("Metadata/plate_1.gcode", "; synthetic test\nG28\n")
+    prepared = call_tool("prepare_print", {"file_path": str(path)})
+    review = call_tool(
+        "prepare_connect_print",
+        {"file_path": str(path), "reviewed_sha256": prepared["sha256"], "printer": "Test P2S"},
+    )
+    args = {"approval_id": review["approval_id"], "reviewed_digest": review["review_digest"]}
+    with pytest.raises(ToolError, match="required"):
+        call_tool("send_connect_print", args)
+    assert "send" not in calls
+    result = call_tool(
+        "send_connect_print",
+        {**args, "user_approved": True, "bed_clear": True, "loaded_filament_confirmed": True},
+    )
+    assert result["status"] == "job_accepted"
+    with pytest.raises(ToolError, match="consumed"):
+        call_tool(
+            "send_connect_print",
+            {**args, "user_approved": True, "bed_clear": True, "loaded_filament_confirmed": True},
+        )
+    assert calls.count("send") == 1
 
 
 def test_punch_hole_tool_end_to_end(cube_stl: Path, tmp_path: Path) -> None:
@@ -159,9 +240,7 @@ def test_split_parts_tool_end_to_end(tmp_path: Path) -> None:
     model = tmp_path / "two.stl"
     trimesh.util.concatenate([big, small]).export(model)
 
-    data = call_tool(
-        "split_parts", {"file_path": str(model), "output_dir": str(tmp_path / "out")}
-    )
+    data = call_tool("split_parts", {"file_path": str(model), "output_dir": str(tmp_path / "out")})
 
     assert len(data["output_paths"]) == 2
     assert all(Path(path).exists() for path in data["output_paths"])
