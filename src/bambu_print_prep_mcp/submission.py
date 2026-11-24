@@ -22,12 +22,67 @@ from bambu_print_prep_mcp.connect import open_in_bambu_connect, prepare_print
 _TTL_SECONDS = 600
 _REVIEW_KEYS = {
     "printer",
-    "material",
-    "ams_slot",
+    "filament_mappings",
+    "detected_ams_slots",
     "timelapse",
     "bed_leveling",
     "flow_calibration",
 }
+
+_SLOT_PATTERN = r"(?:[A-Z]+[1-9][0-9]*|HT - [A-Z]+|[1-4])"
+_MATERIAL_PATTERN = r"[A-Za-z][A-Za-z0-9 .+/_()-]{0,63}"
+
+
+def _slots(value: Any) -> dict[str, str]:
+    if not isinstance(value, list) or not value:
+        raise ValueError("Connect did not report detected AMS slots.")
+    slots = {}
+    for slot in value:
+        if (
+            not isinstance(slot, dict)
+            or set(slot) != {"ams_slot", "material"}
+            or not isinstance(slot["ams_slot"], str)
+            or not re.fullmatch(_SLOT_PATTERN, slot["ams_slot"])
+            or not isinstance(slot["material"], str)
+            or not slot["material"]
+            or slot["ams_slot"] in slots
+        ):
+            raise ValueError("Connect detected AMS inventory is incomplete or ambiguous.")
+        slots[slot["ams_slot"]] = slot["material"]
+    return slots
+
+
+def _validate_review(review: Any, printer: str, detected_slots: Any) -> None:
+    if (
+        not isinstance(review, dict)
+        or set(review) != _REVIEW_KEYS
+        or review["printer"] != printer
+        or review["timelapse"] not in ("On", "Off")
+        or review["bed_leveling"] not in ("Auto", "On", "Off")
+        or review["flow_calibration"] not in ("Auto", "On", "Off")
+    ):
+        raise ValueError("Connect returned an incomplete or unexpected review.")
+    inventory = _slots(review["detected_ams_slots"])
+    if inventory != _slots(detected_slots):
+        raise ValueError("Connect detected AMS inventory changed during preparation.")
+    mappings = review["filament_mappings"]
+    if not isinstance(mappings, list) or not mappings:
+        raise ValueError("Connect returned incomplete filament mappings.")
+    for index, mapping in enumerate(mappings, start=1):
+        if (
+            not isinstance(mapping, dict)
+            or set(mapping) != {"filament_index", "source_material", "ams_slot", "material"}
+            or type(mapping["filament_index"]) is not int
+            or mapping["filament_index"] != index
+            or not isinstance(mapping["ams_slot"], str)
+            or mapping["ams_slot"] not in inventory
+            or not isinstance(mapping["material"], str)
+            or not re.fullmatch(_MATERIAL_PATTERN, mapping["material"])
+            or mapping["material"] in {"Empty", "Unknown"}
+            or mapping["source_material"] != mapping["material"]
+            or inventory[mapping["ams_slot"]] != mapping["material"]
+        ):
+            raise ValueError("Connect filament mapping is unresolved or not in detected AMS slots.")
 
 
 class ConnectUIError(ValueError):
@@ -133,7 +188,8 @@ class SubmissionService:
         if job.plates != [1]:
             raise ValueError("Submission currently supports one archive containing only plate 1.")
         with self._lock():
-            self.ui.call("idle", printer=printer)
+            detected = self.ui.call("idle", printer=printer).get("detected_ams_slots")
+            _slots(detected)
             approval_id = secrets.token_hex(16)
             directory = self.root / approval_id
             directory.mkdir(mode=0o700)
@@ -145,18 +201,14 @@ class SubmissionService:
             if prepare_print(staged).sha256 != job.sha256:
                 raise ValueError("Source changed while staging; prepare again.")
             open_in_bambu_connect(staged, job.sha256)
-            staged_response = self.ui.call("stage", printer=printer, filename=staged.name)
+            staged_response = self.ui.call(
+                "stage", printer=printer, filename=staged.name, detected_ams_slots=detected
+            )
             review = staged_response.get("review")
             plate_info = staged_response.get("plate_info")
-            if (
-                not isinstance(review, dict)
-                or set(review) != _REVIEW_KEYS
-                or not all(isinstance(v, str) and v for v in review.values())
-                or review["printer"] != printer
-                or not isinstance(plate_info, str)
-                or not plate_info
-            ):
-                raise ValueError("Connect returned an incomplete or unexpected review.")
+            _validate_review(review, printer, detected)
+            if not isinstance(plate_info, str) or not plate_info:
+                raise ValueError("Connect returned incomplete plate information.")
             approved = {
                 "file_name": Path(job.file_path).name,
                 "sha256": job.sha256,
@@ -214,6 +266,11 @@ class SubmissionService:
                 or _digest(record["review"]) != reviewed_digest
             ):
                 raise ValueError("Approved review digest does not match.")
+            settings = record["review"]["settings"]
+            # Old single-slot reviews cannot authorize the expanded mapping schema.
+            _validate_review(
+                settings, settings.get("printer", ""), settings.get("detected_ams_slots")
+            )
             expected_hash = record["review"]["sha256"]
             for file in (record["source_path"], record["staged_path"]):
                 if prepare_print(file).sha256 != expected_hash:

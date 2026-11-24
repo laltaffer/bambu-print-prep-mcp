@@ -26,8 +26,22 @@ control or a cloud API. The initial import handoff is retained. The approved ext
   bed_clear=false, loaded_filament_confirmed=false)`.
 - Preparing checks an exactly named Idle printer, makes a uniquely named private
   read-only copy, confirms Connect import, opens review and returns the exact job,
-  printer, plate metadata, material, AMS slot, timelapse, leveling and calibration.
-- Preparing never presses Send. Single plate 1 and one resolved AMS slot only.
+  printer, plate metadata, all filament mappings, detected AMS slot inventory,
+  timelapse, leveling and calibration.
+- Preparing never presses Send. Exactly one plate numbered 1. Multiple filaments
+  can use any resolved slot reported by the selected printer, without a unit-count
+  limit. Read ordinary AMS, AMS HT and AMS lite slot labels from Connect.
+- Return each displayed mapping's one-based review index, source material, target
+  slot and target material. Require complete coverage against the plate's displayed
+  filament list, and require each target slot/material in the detected inventory.
+  Empty, unknown, non-detected or ambiguous targets fail closed. Return all detected
+  slots, including unused/empty slots, and bind both lists into the review digest.
+- Re-read detected slots/materials during the pre-Send Idle check, then compare all
+  mapping rows/options in the final same-root check. Changed/disconnected units or
+  changed mappings require fresh approval. Older single-slot reviews cannot Send.
+- Accessibility does not expose mapping colors. The user confirms the intended
+  physical colors/materials; a review index describes display order, not an inferred
+  slicer filament ID. Do not select mappings automatically.
 - Chat approval and physical readiness confirmations are supplied by the caller;
   the MCP cannot independently authenticate what the user said in chat. Never
   describe a boolean/hash as independent human authorization.
@@ -48,7 +62,7 @@ control or a cloud API. The initial import handoff is retained. The approved ext
   stop live smoke at review until Lawrence approves a new specific test job.
 
 Not included: automatic slicing, automatic printer/filament selection, multi-plate
-or multi-filament printing, external-spool mapping, auth, installation, firmware,
+printing, external-spool mapping, multi-nozzle routing, auth, installation, firmware,
 independent hardware calibration, unattended queuing or blanket print authority.
 The initial import-only no-Send bullets above describe the retained original tools,
 not the new explicitly approved submission tool.

@@ -12,8 +12,14 @@ from bambu_print_prep_mcp.submission import SubmissionService
 
 SETTINGS = {
     "printer": "Test P2S",
-    "material": "PLA",
-    "ams_slot": "A2",
+    "detected_ams_slots": [
+        {"ams_slot": "A1", "material": "PLA"},
+        {"ams_slot": "A2", "material": "PLA"},
+        {"ams_slot": "HT - A", "material": "PETG"},
+    ],
+    "filament_mappings": [
+        {"filament_index": 1, "source_material": "PLA", "ams_slot": "A2", "material": "PLA"},
+    ],
     "timelapse": "Off",
     "bed_leveling": "Auto",
     "flow_calibration": "Auto",
@@ -25,6 +31,7 @@ class FakeUI:
         self.calls = []
         self.idle = True
         self.settings = copy.deepcopy(SETTINGS)
+        self.detected_slots = None
         self.send_error = None
         self.send_result = {"status": "job_accepted", "send_attempted": True}
 
@@ -33,7 +40,13 @@ class FakeUI:
         if action == "idle":
             if not self.idle:
                 raise ValueError("Printer is not Idle")
-            return {"status": "idle"}
+            return {
+                "status": "idle",
+                "detected_ams_slots": copy.deepcopy(
+                    self.settings["detected_ams_slots"]
+                    if self.detected_slots is None else self.detected_slots
+                ),
+            }
         if action == "stage":
             return {"review": copy.deepcopy(self.settings), "plate_info": "P2S / PEI / PLA / 0.4"}
         if action == "send":
@@ -156,7 +169,7 @@ def test_uncertain_or_changed_ui_never_retries(service, job, outcome):
     elif outcome == "unknown":
         service.ui.send_result = {"status": "submission_unknown", "send_attempted": True}
     elif outcome == "mismatch":
-        service.ui.settings["ams_slot"] = "A4"
+        service.ui.settings["filament_mappings"][0]["ams_slot"] = "A1"
     else:
         service.ui.idle = False
     assert send(service, r)["status"] == "submission_unknown"
@@ -215,7 +228,7 @@ def test_malformed_native_response_is_safe(monkeypatch, value):
 
 
 def test_incomplete_ui_review_never_yields_an_approval_ticket(service, job):
-    service.ui.settings.pop("ams_slot")
+    service.ui.settings.pop("filament_mappings")
     with pytest.raises(ValueError, match="incomplete"):
         prepare(service, job)
     assert list(service.root.glob("*/review.json")) == []
@@ -242,3 +255,47 @@ def test_consumption_sync_failure_prevents_ui_send(service, job, monkeypatch):
         send(service, r)
     assert not any(c[0] == "send" for c in service.ui.calls)
     assert (service.root / r["approval_id"] / "attempted.json").exists()
+
+
+def test_review_includes_all_detected_slots_and_each_filament_mapping(service, job):
+    service.ui.settings["detected_ams_slots"] += [
+        {"ams_slot": "B1", "material": "PLA"},
+        {"ams_slot": "B2", "material": "Empty"},
+        {"ams_slot": "G4", "material": "PLA"},
+    ]
+    service.ui.settings["filament_mappings"] += [
+        {"filament_index": 2, "source_material": "PLA", "ams_slot": "B1", "material": "PLA"},
+        {"filament_index": 3, "source_material": "PETG", "ams_slot": "HT - A", "material": "PETG"},
+    ]
+    review = prepare(service, job)
+    settings = review["review"]["settings"]
+    assert [m["ams_slot"] for m in settings["filament_mappings"]] == ["A2", "B1", "HT - A"]
+    assert len(settings["detected_ams_slots"]) == 6
+    assert send(service, review)["status"] == "job_accepted"
+
+
+@pytest.mark.parametrize("change", ["missing", "empty", "unknown", "duplicate", "index", "type"])
+def test_invalid_mapping_never_creates_an_approval(service, job, change):
+    settings = service.ui.settings
+    if change == "missing":
+        settings["filament_mappings"][0]["ams_slot"] = "Z4"
+    elif change in {"empty", "unknown"}:
+        material = "Empty" if change == "empty" else "?"
+        settings["detected_ams_slots"][1]["material"] = material
+        settings["filament_mappings"][0]["material"] = material
+    elif change == "duplicate":
+        settings["detected_ams_slots"].append(copy.deepcopy(settings["detected_ams_slots"][0]))
+    elif change == "index":
+        settings["filament_mappings"][0]["filament_index"] = 2
+    else:
+        settings["filament_mappings"][0]["source_material"] = "PETG"
+    with pytest.raises(ValueError, match="AMS|mapping"):
+        prepare(service, job)
+    assert list(service.root.glob("*/review.json")) == []
+
+
+def test_inventory_changed_during_staging_prevents_approval(service, job):
+    service.ui.detected_slots = [{"ams_slot": "A2", "material": "PLA"}]
+    with pytest.raises(ValueError, match="inventory changed"):
+        prepare(service, job)
+    assert list(service.root.glob("*/review.json")) == []

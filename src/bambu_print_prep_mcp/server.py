@@ -213,7 +213,8 @@ def prepare_connect_print(file_path: str, reviewed_sha256: str, printer: str) ->
 
     Requires logged-in English Connect, macOS Accessibility and Swift tools. Checks
     that the named printer is Idle, snapshots the file locally and opens the Send
-    review dialog, but never clicks Send. Show the returned review to the user.
+    review dialog, but never clicks Send. Includes all detected AMS slots and each
+    filament's selected mapping. Show the complete returned review to the user.
     """
     return prepare_connect_print_core(file_path, reviewed_sha256, printer)
 

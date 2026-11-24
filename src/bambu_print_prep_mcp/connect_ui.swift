@@ -49,7 +49,15 @@ func tree(_ root: AXUIElement) throws -> Node {
     }
     return try read(root, 0)
 }
+#if AX_FIXTURES
+var fixtureWindow: (() throws -> Node)?
+var fixturePress: ((Node) throws -> Void)?
+#endif
 func window() throws -> Node {
+    #if AX_FIXTURES
+    guard let read = fixtureWindow else { try fail("No fixture window provided; no app access.") }
+    return try read()
+    #else
     guard AXIsProcessTrusted() else {
         try fail("macOS Accessibility access is required for the MCP host; no permission was changed.")
     }
@@ -66,12 +74,18 @@ func window() throws -> Node {
         try fail("Expected one visible Connect main window (found \(mainWindows.count)). Open Connect and close extra main windows.")
     }
     return try tree(mainWindows[0])
+    #endif
 }
 func press(_ node: Node) throws {
+    #if AX_FIXTURES
+    guard let action = fixturePress else { try fail("No fixture action provided; no app access.") }
+    try action(node)
+    #else
     guard node.enabled else { try fail("Required Connect control is disabled.") }
     guard AXUIElementPerformAction(node.element, kAXPressAction as CFString) == .success else {
         try fail("Connect did not acknowledge the requested UI action.")
     }
+    #endif
 }
 func control(_ root: Node, _ label: String, role: String = kAXButtonRole) throws -> Node {
     let matches = root.all.filter {
@@ -118,20 +132,97 @@ func reviewDialog(_ root: Node) throws -> Node {
     guard let n = candidates.last else { try fail("Open Connect's Send to print review dialog.") }
     return n
 }
-func materialAndSlot(_ dialog: Node) throws -> (String, String) {
-    let texts = dialog.texts
-    let slots = texts.enumerated().filter { $0.element.range(of: "^[A-Z][1-4]$", options: .regularExpression) != nil }
-    guard slots.count == 1, slots[0].offset + 1 < texts.count else {
-        try fail("This version supports one filament mapped to one AMS slot only.")
-    }
-    let material = texts[slots[0].offset + 1]
-    guard material.range(of: "^[A-Z][A-Z0-9+ /_-]{0,24}$", options: .regularExpression) != nil else {
-        try fail("Connect filament mapping is unresolved.")
-    }
-    return (material, slots[0].element)
+struct AMSSlot: Codable, Equatable {
+    let ams_slot: String
+    let material: String
 }
-func reviewSnapshot(_ root: Node, _ printer: String) throws -> [String: String] {
+struct FilamentMapping: Codable, Equatable {
+    // Review order, not an inferred slicer filament ID or color.
+    let filament_index: Int
+    let source_material: String
+    let ams_slot: String
+    let material: String
+}
+struct Review: Codable, Equatable {
+    let printer: String
+    let filament_mappings: [FilamentMapping]
+    let detected_ams_slots: [AMSSlot]
+    let timelapse: String
+    let bed_leveling: String
+    let flow_calibration: String
+}
+func decode<T: Decodable>(_ value: Any?, as type: T.Type) throws -> T {
+    guard let value = value, JSONSerialization.isValidJSONObject(value) else {
+        try fail("Missing or unsupported AMS review data. Prepare a fresh review.")
+    }
+    return try JSONDecoder().decode(type, from: JSONSerialization.data(withJSONObject: value))
+}
+func jsonObject<T: Encodable>(_ value: T) throws -> Any {
+    try JSONSerialization.jsonObject(with: JSONEncoder().encode(value))
+}
+func isSlot(_ text: String) -> Bool {
+    text.range(of: #"^(?:[A-Z]+[1-9][0-9]*|HT - [A-Z]+|[1-4])$"#,
+        options: .regularExpression) != nil
+}
+func isMaterial(_ text: String) -> Bool {
+    text.range(of: #"^[A-Za-z][A-Za-z0-9 .+/_()-]{0,63}$"#, options: .regularExpression) != nil &&
+        !["Empty", "Unknown"].contains(text)
+}
+func checkedInventory(_ slots: [AMSSlot]) throws -> [AMSSlot] {
+    guard !slots.isEmpty, Set(slots.map { $0.ams_slot }).count == slots.count,
+        slots.allSatisfy({ isSlot($0.ams_slot) && !$0.material.isEmpty }) else {
+        try fail("Detected AMS slot inventory is empty or ambiguous.")
+    }
+    return slots.sorted { $0.ams_slot < $1.ams_slot }
+}
+func detectedSlots(_ root: Node, _ printer: String) throws -> [AMSSlot] {
+    _ = try deviceProgress(root, printer)
+    // Enumerate every recognized slot label before inspecting its material.
+    // Unreadable rows cannot disappear, even when each slot has its own wrapper.
+    // AMS lite uses 1...4; unrelated/ambiguous numeric text must fail closed.
+    let containers = root.all.filter { parent in
+        parent.children.contains { $0.role == kAXStaticTextRole && isSlot($0.label) }
+    }
+    let slots = try containers.flatMap { parent -> [AMSSlot] in
+        try parent.children.enumerated().compactMap { i, label -> AMSSlot? in
+            guard label.role == kAXStaticTextRole, isSlot(label.label) else { return nil }
+            guard i + 1 < parent.children.count else { try fail("Incomplete detected AMS slot row.") }
+            let material = parent.children[i + 1]
+            guard material.role == kAXGroupRole, material.texts.count == 1 else {
+                try fail("Detected AMS slot material is unreadable.")
+            }
+            return AMSSlot(ams_slot: label.label, material: material.texts[0])
+        }
+    }
+    return try checkedInventory(slots)
+}
+func filamentMappings(_ dialog: Node, _ sources: [String], _ slots: [AMSSlot]) throws -> [FilamentMapping] {
+    // Match complete cards, never flatten adjacent slots into an unbound list.
+    let cards = terminalMatches(dialog) { n in
+        return n.role == kAXGroupRole && n.children.count == 2 &&
+            n.children[0].role == kAXGroupRole && n.children[0].texts.count == 1 &&
+            isMaterial(n.children[0].texts[0]) && n.children[1].role == kAXGroupRole &&
+            !n.children[1].texts.isEmpty
+    }
+    guard !sources.isEmpty, cards.count == sources.count else {
+        try fail("Every sliced filament must have one resolved AMS mapping.")
+    }
+    return try cards.enumerated().map { index, card in
+        let text = card.texts
+        guard text.count == 3, isSlot(text[1]), isMaterial(text[2]),
+            text[0] == sources[index], text[0] == text[2],
+            slots.contains(AMSSlot(ams_slot: text[1], material: text[2])) else {
+            try fail("Filament mapping differs from the plate or detected AMS inventory.")
+        }
+        return FilamentMapping(filament_index: index + 1, source_material: text[0],
+            ams_slot: text[1], material: text[2])
+    }
+}
+func reviewSnapshot(_ root: Node, _ printer: String, _ sources: [String], _ slots: [AMSSlot]) throws -> Review {
     let dialog = try reviewDialog(root)
+    guard !dialog.texts.contains("Left Nozzle"), !dialog.texts.contains("Right Nozzle") else {
+        try fail("Multi-nozzle routing is not supported by this adapter.")
+    }
     let actualPrinter = try selectedPrinter(dialog)
     guard actualPrinter == printer else {
         try fail("Selected printer differs from the requested printer.")
@@ -160,19 +251,18 @@ func reviewSnapshot(_ root: Node, _ printer: String) throws -> [String: String] 
         }
         return selected[0].label
     }
-    let (material, slot) = try materialAndSlot(dialog)
-    return ["printer": actualPrinter, "material": material, "ams_slot": slot,
-        "timelapse": try choice(0..<2, ["On", "Off"]),
-        "bed_leveling": try choice(2..<5, ["Auto", "On", "Off"]),
-        "flow_calibration": try choice(5..<8, ["Auto", "On", "Off"])]
+    let inventory = try checkedInventory(slots)
+    return Review(printer: actualPrinter,
+        filament_mappings: try filamentMappings(dialog, sources, inventory),
+        detected_ams_slots: inventory,
+        timelapse: try choice(0..<2, ["On", "Off"]),
+        bed_leveling: try choice(2..<5, ["Auto", "On", "Off"]),
+        flow_calibration: try choice(5..<8, ["Auto", "On", "Off"]))
 }
-func snapshot(_ printer: String) throws -> [String: String] {
-    try reviewSnapshot(window(), printer)
-}
-func stableReview(_ printer: String) throws -> [String: String] {
-    var previous: [String: String]?
+func stableReview(_ printer: String, _ sources: [String], _ slots: [AMSSlot]) throws -> Review {
+    var previous: Review?
     return try waitFor {
-        let current = try snapshot(printer)
+        let current = try reviewSnapshot(window(), printer, sources, slots)
         guard previous == current else {
             previous = current
             try fail("Waiting for stable Connect options.")
@@ -192,7 +282,11 @@ func deviceProgress(_ root: Node, _ printer: String) throws -> [String] {
     guard jobs.count <= 1 else { try fail("Printer progress is ambiguous.") }
     return jobs
 }
-func idle(_ printer: String) throws -> [String] {
+struct DeviceState {
+    let progress: [String]
+    let slots: [AMSSlot]
+}
+func idle(_ printer: String) throws -> DeviceState {
     let root = try window()
     if (try? reviewDialog(root)) != nil {
         try press(control(try reviewDialog(root), "Cancel"))
@@ -215,9 +309,16 @@ func idle(_ printer: String) throws -> [String] {
         return cards[0]
     }
     try press(card)
-    return try waitFor { try deviceProgress(window(), printer) }
+    return try waitFor {
+        let root = try window()
+        return DeviceState(progress: try deviceProgress(root, printer), slots: try detectedSlots(root, printer))
+    }
 }
-func plateInfo(_ root: Node, _ filename: String) throws -> String {
+struct PlateSnapshot {
+    let info: String
+    let filaments: [String]
+}
+func plateInfo(_ root: Node, _ filename: String) throws -> PlateSnapshot {
     let choosers = root.all.filter { n in
         n.role == kAXPopUpButtonRole && n.texts.contains { $0.hasSuffix(".gcode.3mf") }
     }
@@ -239,12 +340,19 @@ func plateInfo(_ root: Node, _ filename: String) throws -> String {
     guard let info = info, plates.count == 1, plates[0].texts == ["1"] else {
         try fail("Expected one sliced plate with readable compatibility information.")
     }
-    return info
+    let texts = panels[0].texts
+    guard let start = texts.firstIndex(of: "Filaments:"),
+        let end = texts.firstIndex(of: "Nozzle Diameter:"), start + 1 < end else {
+        try fail("Plate filament list is missing or ambiguous.")
+    }
+    let filaments = Array(texts[(start + 1)..<end])
+    guard filaments.allSatisfy(isMaterial) else { try fail("Plate materials are unreadable.") }
+    return PlateSnapshot(info: info, filaments: filaments)
 }
-func plate(_ filename: String) throws -> String {
+func plate(_ filename: String) throws -> PlateSnapshot {
     try plateInfo(window(), filename)
 }
-func openReview(_ filename: String) throws -> String {
+func openReview(_ filename: String) throws -> PlateSnapshot {
     let root = try window()
     let info = try plateInfo(root, filename)
     // Bind the Print action to the very same plate snapshot, not a second window read.
@@ -260,6 +368,47 @@ func matchingNewJob(_ root: Node, _ printer: String, _ filename: String, _ basel
           !jobs[0].contains("Finished ") else { try fail("New job acceptance is not yet visible.") }
     return jobs[0]
 }
+func submitReviewed(_ printer: String, _ filename: String, _ expected: Review,
+    _ info: String, _ expires: Double, onAttempt: () -> Void) throws -> [String: Any] {
+    let sources = expected.filament_mappings.map { $0.source_material }
+    guard try stableReview(printer, sources, expected.detected_ams_slots) == expected else { try fail("Connect settings changed after approval.") }
+    // Check readiness again; reopen and compare the complete review after navigating.
+    let device = try idle(printer)
+    guard device.slots == expected.detected_ams_slots else {
+        try fail("Detected AMS slots or materials changed after approval.")
+    }
+    let baseline = device.progress
+    guard !baseline.contains(where: { $0.hasPrefix("Printing Progress " + filename + " ") }) else {
+        try fail("This staged job has already appeared on the printer. Do not repeat it.")
+    }
+    let printLink = try waitFor { try control(window(), "Print", role: linkRole) }
+    try press(printLink)
+    let currentInfo = try waitFor { try plate(filename) }
+    guard currentInfo.info == info, currentInfo.filaments == sources else { try fail("Plate information changed after approval.") }
+    let reviewedInfo = try openReview(filename)
+    guard reviewedInfo.info == info, reviewedInfo.filaments == sources else { try fail("Plate metadata changed before opening review.") }
+    guard try stableReview(printer, sources, device.slots) == expected else { try fail("Connect settings changed after readiness check.") }
+    // Use this final fresh root for BOTH complete settings comparison and the Send control.
+    let finalRoot = try window()
+    guard try reviewSnapshot(finalRoot, printer, sources, device.slots) == expected else {
+        try fail("Connect settings changed immediately before Send.")
+    }
+    let dialog = try reviewDialog(finalRoot)
+    let button = try control(dialog, "Send")
+    guard button.texts == ["Send"] else { try fail("Final Send control changed.") }
+    guard Date().timeIntervalSince1970 <= expires else { try fail("Review expired before Send.") }
+    onAttempt()
+    try press(button)  // Exactly one attempt. Never retry or dismiss a further warning.
+    do {
+        let progress: String = try waitFor {
+            try matchingNewJob(window(), printer, filename, baseline)
+        }
+        return ["status": "job_accepted", "progress": progress, "send_attempted": true]
+    } catch {
+        return ["status": "submission_unknown", "send_attempted": true,
+            "message": "Send was attempted once. Check the printer before any new attempt."]
+    }
+}
 #if !AX_FIXTURES
 let input = FileHandle.standardInput.readDataToEndOfFile()
 var attemptedSend = false
@@ -272,8 +421,8 @@ do {
     var result: [String: Any] = [:]
     switch action {
     case "idle":
-        _ = try idle(printer)
-        result = ["status": "idle"]
+        let device = try idle(printer)
+        result = ["status": "idle", "detected_ams_slots": try jsonObject(device.slots)]
     case "stage":
         guard let filename = request["filename"] as? String else { try fail("Missing staged filename.") }
         let expectedText = "You will import the file \"\(filename)\"."
@@ -284,46 +433,15 @@ do {
         }
         _ = try waitFor { try plate(filename) }
         let info = try openReview(filename)
-        let review = try stableReview(printer)
-        result = ["review": review, "plate_info": info]
+        let slots = try decode(request["detected_ams_slots"], as: [AMSSlot].self)
+        let review = try stableReview(printer, info.filaments, slots)
+        result = ["review": try jsonObject(review), "plate_info": info.info]
     case "send":
         guard let filename = request["filename"] as? String,
-              let expected = request["review"] as? [String: String],
               let info = request["plate_info"] as? String else { try fail("Missing approved review.") }
-        guard try stableReview(printer) == expected else { try fail("Connect settings changed after approval.") }
-        // Check readiness again; reopen and compare the complete review after navigating.
-        let baseline = try idle(printer)
-        guard !baseline.contains(where: { $0.hasPrefix("Printing Progress " + filename + " ") }) else {
-            try fail("This staged job has already appeared on the printer. Do not repeat it.")
-        }
-        let printLink = try waitFor { try control(window(), "Print", role: linkRole) }
-        try press(printLink)
-        let currentInfo = try waitFor { try plate(filename) }
-        guard currentInfo == info else { try fail("Plate information changed after approval.") }
-        let reviewedInfo = try openReview(filename)
-        guard reviewedInfo == info else { try fail("Plate metadata changed before opening review.") }
-        guard try stableReview(printer) == expected else { try fail("Connect settings changed after readiness check.") }
-        // Use this final fresh root for BOTH complete settings comparison and the Send control.
-        let finalRoot = try window()
-        guard try reviewSnapshot(finalRoot, printer) == expected else {
-            try fail("Connect settings changed immediately before Send.")
-        }
-        let dialog = try reviewDialog(finalRoot)
-        let button = try control(dialog, "Send")
-        guard button.texts == ["Send"] else { try fail("Final Send control changed.") }
-        guard let expires = request["expires_at"] as? Double,
-              Date().timeIntervalSince1970 <= expires else { try fail("Review expired before Send.") }
-        attemptedSend = true
-        try press(button)  // Exactly one attempt. Never retry or dismiss a further warning.
-        do {
-            let progress: String = try waitFor {
-                try matchingNewJob(window(), printer, filename, baseline)
-            }
-            result = ["status": "job_accepted", "progress": progress, "send_attempted": true]
-        } catch {
-            result = ["status": "submission_unknown", "send_attempted": true,
-                "message": "Send was attempted once. Check the printer before any new attempt."]
-        }
+        let expected = try decode(request["review"], as: Review.self)
+        guard let expires = request["expires_at"] as? Double else { try fail("Missing review expiry.") }
+        result = try submitReviewed(printer, filename, expected, info, expires) { attemptedSend = true }
     default:
         try fail("Unsupported Connect adapter action.")
     }

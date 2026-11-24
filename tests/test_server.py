@@ -79,8 +79,10 @@ def test_submission_tools_bind_review_and_require_approval(tmp_path: Path, monke
 
     settings = {
         "printer": "Test P2S",
-        "material": "PLA",
-        "ams_slot": "A2",
+        "detected_ams_slots": [{"ams_slot": "A2", "material": "PLA"}],
+        "filament_mappings": [
+            {"filament_index": 1, "source_material": "PLA", "ams_slot": "A2", "material": "PLA"}
+        ],
         "timelapse": "Off",
         "bed_leveling": "Auto",
         "flow_calibration": "Auto",
@@ -90,6 +92,8 @@ def test_submission_tools_bind_review_and_require_approval(tmp_path: Path, monke
     class UI:
         def call(self, action, **args):
             calls.append(action)
+            if action == "idle":
+                return {"status": "idle", "detected_ams_slots": settings["detected_ams_slots"]}
             return (
                 {"review": settings, "plate_info": "P2S / PEI / PLA / 0.4"}
                 if action == "stage"
